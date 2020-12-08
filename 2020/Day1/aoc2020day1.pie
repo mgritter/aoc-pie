@@ -1,0 +1,354 @@
+#lang pie
+
+(claim small-input (List Nat))
+
+(define small-input
+  (:: 1721
+    (:: 979
+      (:: 366
+        (:: 299
+          (:: 675
+            (:: 1456
+              nil)))))))
+
+
+;; Addition, from The Little Typer 3.24 through 3.27
+(claim + (-> Nat Nat Nat))
+(claim step-+ (-> Nat Nat))
+
+(define step-+
+  (lambda (n)
+    (add1 n)))
+
+(define +
+  (lambda (n j)
+    (iter-Nat n
+      j
+      step-+)))
+
+;; if z == 0 then x else y
+(claim if-zero-else (-> Nat Nat Nat Nat))
+
+(define if-zero-else
+  (lambda (t tv fv)
+    (which-Nat
+      t
+      tv
+      (lambda (t-1) fv))))
+
+(claim ize-checks-zero
+  (Pi ((t Nat) (tv Nat) (fv Nat))
+    (-> (= Nat t zero)
+        (= Nat (if-zero-else t tv fv) tv))))
+
+(claim ize-checks-nonzero
+  (Pi ((t-1 Nat) (tv Nat) (fv Nat))
+    (= Nat (if-zero-else (add1 t-1) tv fv) fv)))
+
+(claim ize-reverse-curry
+  (Pi ((tv Nat) (fv Nat))
+    (-> Nat Nat)))
+
+(define ize-reverse-curry
+  (lambda (tv fv)
+    (lambda (x) (if-zero-else x tv fv))))
+      
+(define ize-checks-zero
+  (lambda (t tv fv)
+    (lambda (x=zero)
+      (cong
+        x=zero
+        (ize-reverse-curry tv fv)))))
+
+(define ize-checks-nonzero
+  (lambda (t tv fv)
+    (same fv)))
+
+;; If a == b, then tv else fv
+(claim if-equal-else (-> Nat Nat (-> Nat Nat Nat)))
+
+(claim iee-motive (-> Nat U))
+
+(define iee-motive
+  (lambda (a)
+    (-> Nat Nat)))
+
+(claim iee-base
+  (-> Nat Nat Nat Nat))
+
+;; This is a function that checks if b == 0
+;; it should be used for a=1
+(define iee-base
+  (lambda (tv fv)
+    (lambda (b)
+      (which-Nat b
+        tv
+        (lambda (b-1) fv)))))
+
+(claim iee-step
+ (-> Nat Nat
+     Nat
+     (-> Nat Nat)
+     (-> Nat Nat)))
+
+;; Given a value of a-1, and a function that checks
+;; equality with a-1, produce a function that checks
+;; equality with a.
+(define iee-step
+  (lambda (tv fv)
+    (lambda (a-1 check_a-1)
+      (lambda (b)
+        (which-Nat b
+          fv  ;; b = 0 and a > 0
+          (lambda (b-1) ;; b > 0 and a > 0
+            (check_a-1 b-1)))))))
+
+(define if-equal-else
+  (lambda (tv fv a b)
+    ((ind-Nat a
+       iee-motive
+       (iee-base tv fv)
+       (iee-step tv fv))
+      b)))
+
+;; Find a pair that sums to 2000
+
+(claim find-sums-to-2020-step (-> Nat Nat (List Nat) Nat Nat))
+
+(define find-sums-to-2020-step
+  (lambda (a x xs found)
+    (if-equal-else
+      x         ;; here
+      found     ;; later in list?
+      (+ a x)
+      2020)))
+            
+(claim find-sums-to-2020 (-> Nat (List Nat) Nat))
+
+(define find-sums-to-2020
+  (lambda (a xs)
+    (rec-List xs
+      zero
+      (find-sums-to-2020-step a))))
+                              
+(claim find-2020 (-> (List Nat) (Pair Nat Nat)))
+
+(define find-2020
+  (lambda (xs)
+    (rec-List xs
+      (the (Pair Nat Nat) (cons zero zero))
+      (lambda (x rest found)
+        ((the (-> Nat (Pair Nat Nat))
+           (lambda (y)
+             (which-Nat y
+               found
+               (lambda (y-1) (cons x y)))))
+         (find-sums-to-2020 x rest))))))
+
+
+(claim large-input (List Nat))
+
+(define large-input
+   (:: 1735
+ (:: 1700
+ (:: 1358
+ (:: 1908
+ (:: 1634
+ (:: 2006
+ (:: 762
+ (:: 1492
+ (:: 1917
+ (:: 1591
+ (:: 1571
+ (:: 1283
+ (:: 1744
+ (:: 1815
+ (:: 1383
+ (:: 1787
+ (:: 1832
+ (:: 1032
+ (:: 1845
+ (:: 1406
+ (:: 1978
+ (:: 1263
+ (:: 1450
+ (:: 1364
+ (:: 1594
+ (:: 1877
+ (:: 1346
+ (:: 1695
+ (:: 1501
+ (:: 1266
+ (:: 1729
+ (:: 1476
+ (:: 1558
+ (:: 1684
+ (:: 1295
+ (:: 1267
+ (:: 1341
+ (:: 1415
+ (:: 1491
+ (:: 1640
+ (:: 1756
+ (:: 1330
+ (:: 1987
+ (:: 1969
+ (:: 1844
+ (:: 1706
+ (:: 1654
+ (:: 1580
+ (:: 1405
+ (:: 1419
+ (:: 1367
+ (:: 1277
+ (:: 1992
+ (:: 1953
+ (:: 1499
+ (:: 1470
+ (:: 2000
+ (:: 1739
+ (:: 1889
+ (:: 1670
+ (:: 1776
+ (:: 1798
+ (:: 1308
+ (:: 1890
+ (:: 1626
+ (:: 1284
+ (:: 1315
+ (:: 1869
+ (:: 1514
+ (:: 1214
+ (:: 1648
+ (:: 1418
+ (:: 1329
+ (:: 1795
+ (:: 1385
+ (:: 1477
+ (:: 1984
+ (:: 1796
+ (:: 1515
+ (:: 2001
+ (:: 1155
+ (:: 1800
+ (:: 1965
+ (:: 1971
+ (:: 1100
+ (:: 1650
+ (:: 1686
+ (:: 1911
+ (:: 1560
+ (:: 1912
+ (:: 1721
+ (:: 1658
+ (:: 1738
+ (:: 1885
+ (:: 1028
+ (:: 266
+ (:: 1989
+ (:: 1704
+ (:: 1388
+ (:: 1498
+ (:: 1769
+ (:: 1453
+ (:: 925
+ (:: 1588
+ (:: 1828
+ (:: 1024
+ (:: 1671
+ (:: 1998
+ (:: 1942
+ (:: 1636
+ (:: 1382
+ (:: 993
+ (:: 1703
+ (:: 1475
+ (:: 1391
+ (:: 1970
+ (:: 1841
+ (:: 1952
+ (:: 1446
+ (:: 1347
+ (:: 1395
+ (:: 1440
+ (:: 1980
+ (:: 1386
+ (:: 1922
+ (:: 1857
+ (:: 1291
+ (:: 1808
+ (:: 1335
+ (:: 1876
+ (:: 1576
+ (:: 1436
+ (:: 634
+ (:: 1557
+ (:: 1782
+ (:: 1881
+ (:: 1955
+ (:: 1765
+ (:: 1736
+ (:: 1585
+ (:: 1858
+ (:: 1862
+ (:: 989
+ (:: 1661
+ (:: 1757
+ (:: 1775
+ (:: 1693
+ (:: 1842
+ (:: 1660
+ (:: 1647
+ (:: 870
+ (:: 1928
+ (:: 1597
+ (:: 1420
+ (:: 1646
+ (:: 1821
+ (:: 2009
+ (:: 1866
+ (:: 1947
+ (:: 1593
+ (:: 1788
+ (:: 1369
+ (:: 1525
+ (:: 1256
+ (:: 1846
+ (:: 1445
+ (:: 1907
+ (:: 1750
+ (:: 1906
+ (:: 1849
+ (:: 765
+ (:: 1342
+ (:: 1811
+ (:: 1260
+ (:: 1466
+ (:: 1424
+ (:: 1823
+ (:: 1767
+ (:: 1290
+ (:: 1840
+ (:: 1825
+ (:: 1287
+ (:: 1384
+ (:: 1996
+ (:: 1627
+ (:: 1983
+ (:: 1328
+ (:: 1674
+ (:: 1676
+ (:: 1727
+ (:: 1810
+ (:: 1394
+ (:: 799
+ (:: 1723
+ (:: 1293
+ (:: 1273
+ (:: 1317
+ (:: 1749
+ (:: 1552
+ (:: 1645
+nil)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
+   )))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
+   )))))))))))))))))))))))))))))))))))))))))))))))))))))))
