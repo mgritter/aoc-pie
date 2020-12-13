@@ -1,0 +1,252 @@
+#lang pie
+
+(claim Direction
+  U)
+
+(define Direction
+  (Either
+    Atom
+    Atom))
+
+(claim l Direction)
+(define l (left 'left))
+
+(claim r Direction)
+(define r (right 'right))
+
+;; A tree returns Nat (or nothing) for every sequence of lefts and rights.
+(claim Tree
+  (Pi ((E U))
+    U))
+
+(claim TreeNode (Pi ((E U)) U))
+(define TreeNode
+  (lambda (E)
+    (Either (Pair Nat E)
+      Trivial)))
+
+(claim absent (Pi ((E U)) (TreeNode E)))
+(define absent
+  (lambda (E)
+    (right sole)))
+
+(claim TreePath U)
+(define TreePath
+  (Sigma ((path-length Nat)) (Vec Direction path-length)))
+
+(define Tree
+  (lambda (E)
+    (-> TreePath (TreeNode E))))
+
+(claim empty-tree (Pi ((E U)) (Tree E)))
+
+(define empty-tree
+  (lambda (E path)
+    (right sole)))
+
+(claim make-leaf
+  (Pi ((E U))
+    (-> Nat E (Tree E))))
+
+(define make-leaf
+  (lambda (E k e)
+    (lambda (path)
+      (which-Nat (car path)
+        (the (TreeNode E) (left (cons k e)))
+        (lambda (n-1) (right sole))))))
+
+(claim make-tree
+  (Pi ((E U)
+       (rootKey Nat)
+       (rootVal E)
+       (left-subtree (Tree E))
+       (right-subtree (Tree E)))
+       (Tree E)))
+
+(define make-tree
+  (lambda (E rkey rval left-subtree right-subtree)
+    (lambda (path)
+      (ind-Vec (car path) (cdr path)
+        (lambda (k v) (TreeNode E))
+        ;; Zero-length vector == end of path
+        (left (cons rkey rval))
+        ;; Nonzero-length vector
+        (lambda (k first-direction remaining-directions ignored)
+          (ind-Either first-direction
+            (lambda (x) (TreeNode E))
+            (lambda (l) (left-subtree (cons k remaining-directions)))
+            (lambda (r) (right-subtree (cons k remaining-directions)))))))))
+
+(claim root
+  (Pi ((E U))
+    (-> (Tree E) (TreeNode E))))
+
+(define root
+  (lambda (E tree)
+    (tree (cons 0 vecnil))))
+
+(claim left-subtree
+  (Pi ((E U))
+    (-> (Tree E) (Tree E))))
+
+(claim right-subtree
+  (Pi ((E U))
+    (-> (Tree E) (Tree E))))
+
+(claim path-subtree
+  (Pi ((E U))
+    (-> (Tree E) TreePath (Tree E))))
+
+(define left-subtree
+  (lambda (E fulltree)
+    (lambda (path)
+      (fulltree (cons (add1 (car path)) (vec:: l (cdr path)))))))
+
+(define right-subtree
+  (lambda (E fulltree)
+    (lambda (path)
+      (fulltree (cons (add1 (car path)) (vec:: r (cdr path)))))))
+
+(claim append-path
+  (Pi ((prefix TreePath)
+       (suffix TreePath))
+    TreePath))
+
+(define append-path
+  (lambda (prefix suffix)
+    (ind-Vec (car prefix) (cdr prefix)
+      (lambda (k v) TreePath)
+      suffix
+      (lambda (k e es prev)
+        (cons (add1 (car prev))
+          (vec:: e (cdr prev)))))))
+         
+(define path-subtree
+  (lambda (E fulltree prefix)
+    (lambda (path)
+      (fulltree (append-path prefix path)))))
+
+(claim right-subtree-preserved
+  (Pi ((E U)
+       (rk Nat)
+       (rv E)
+       (lt (Tree E))
+       (rt (Tree E)))
+    (= (TreeNode E)
+       (root E (right-subtree E (make-tree E rk rv lt rt)))
+       (root E rt))))
+
+;; Wow, proof is trivial/automatic!
+(define right-subtree-preserved
+  (lambda (E rv rk lt rt)
+    (same (root E rt))))
+
+;; Let's build a min-heap
+;; need to introduce order relationship again
+
+(claim + (-> Nat Nat Nat))
+(claim step-+ (-> Nat Nat))
+
+(define step-+
+  (lambda (n)
+    (add1 n)))
+
+(define +
+  (lambda (n j)
+    (iter-Nat n
+      j
+      step-+)))
+
+(claim GreaterThanOrEqual
+  (Pi ((a Nat) (b Nat))
+    U))
+
+(define GreaterThanOrEqual
+  (lambda (a b)
+      (Sigma ((c Nat))
+        (= Nat a (+ c b)))))
+
+(claim HeapGTE
+  (Pi ((E U)
+       (a (TreeNode E))
+       (b (TreeNode E)))
+    U))
+
+(claim key
+  (Pi ((E U))
+    (-> (TreeNode E)
+        Nat)))
+
+(define key
+  (lambda (E node)
+    (ind-Either node
+      (lambda (x) Nat)
+      (lambda (l) (car l))
+      (lambda (r) zero))))
+    
+(define HeapGTE
+  (lambda (E a b)
+    (Either
+     ;; If both are numbers, the evidence is those
+     ;; numbers and a >= relationship.
+     (Sigma ((akey Nat)
+             (bkey Nat)
+             (eq1 (= Nat (key E a) akey))
+             (eq2 (= Nat (key E b) bkey)))
+       (GreaterThanOrEqual akey bkey))
+     ;; If not both are numbers, the evidence is that
+     ;; a is not a number.
+     (= (TreeNode E) (right sole) a))))
+      
+(claim Has-Minheap-Property
+  (Pi ((E U)
+       (tree (Tree E))) 
+    (Pi ((path TreePath))
+       U)))
+
+(define Has-Minheap-Property
+  (lambda (E tree)
+    (lambda (path)
+      ((the (-> (Tree E) U)
+         (lambda (t2)
+           (Pair
+             (HeapGTE E
+               (root E (right-subtree E t2))
+               (root E t2))
+             (HeapGTE E
+               (root E (left-subtree E t2))
+               (root E t2)))))
+        (path-subtree E tree path)))))
+
+(claim example (Tree Nat))
+
+(define example
+  (make-tree Nat 2 2
+    (make-tree Nat 3 3
+      (make-leaf Nat 5 5)
+      (empty-tree Nat))
+    (make-tree Nat 4 4
+      (empty-tree Nat)
+      (make-leaf Nat 5 5))))
+
+(claim empty-tree-is-minheap
+  (Pi ((E U)
+       (path TreePath))
+    (Has-Minheap-Property E (empty-tree E) path)))
+
+(define empty-tree-is-minheap
+  (lambda (E path)
+    ;; Need to show HeapGTE for left and for right
+    (cons
+      (the (HeapGTE E (absent E) (absent E))
+        (right (same (absent E))))
+      (the (HeapGTE E (absent E) (absent E))
+        (right (same (absent E)))))))
+
+(claim Heap (Pi ((E U)) U))
+(define Heap
+  (lambda (E)
+    (Sigma ((t (Tree E)))
+      (Pi ((p TreePath))
+          (Has-Minheap-Property E t p)))))
+

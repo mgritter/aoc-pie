@@ -1,0 +1,377 @@
+#lang pie
+
+;; Addition, from The Little Typer 3.24 through 3.27
+(claim + (-> Nat Nat Nat))
+(claim step-+ (-> Nat Nat))
+
+(define step-+
+  (lambda (n)
+    (add1 n)))
+
+(define +
+  (lambda (n j)
+    (iter-Nat n
+      j
+      step-+)))
+
+;; a is less than b if there exists
+;; c such that a + (c+1) = b
+
+(claim LessThan
+  (Pi ((a Nat) (b Nat))
+    U))
+
+(define LessThan
+  (lambda (a b)
+    (Sigma ((c Nat))
+      (= Nat (add1 (+ a c)) b))))
+
+;; a is gte b if there exists
+;; c such that a = b + c
+
+(claim GreaterThanOrEqual
+  (Pi ((a Nat) (b Nat))
+    U))
+
+(define GreaterThanOrEqual
+  (lambda (a b)
+    (Sigma ((c Nat))
+      (= Nat a (+ b c)))))
+
+;; Every pair of numbers is related in one of those two ways.
+
+(claim compare
+   (Pi ((a Nat) (b Nat))
+    (Either
+     (LessThan a b)
+     (GreaterThanOrEqual a b))))
+
+(claim zero-gte-zero
+   (Either
+     (LessThan 0 0)
+     (GreaterThanOrEqual 0 0)))
+
+(define zero-gte-zero
+    (right (cons 0 (same 0))))
+
+(claim zero-lessthan-b+1
+  (Pi ((b Nat))
+    (Either
+     (LessThan 0 (add1 b))
+     (GreaterThanOrEqual 0 (add1 b)))))
+
+(define zero-lessthan-b+1
+  (lambda (b)
+    (left (cons b (same (add1 b))))))
+
+(claim compare-with-zero
+  (Pi ((b Nat))
+     (Either
+      (LessThan 0 b)
+      (GreaterThanOrEqual 0 b))))
+
+;; compare the number b with zero
+(define compare-with-zero
+  (lambda (b)
+    (ind-Nat b
+      (lambda (n)
+        (Either
+          (LessThan 0 n)
+          (GreaterThanOrEqual 0 n)))
+      zero-gte-zero
+      (lambda (b-1 dontcare)
+        (zero-lessthan-b+1 b-1)))))
+
+(claim mot-compare
+  (-> Nat U))
+
+(define mot-compare
+  (lambda (a)
+    (Pi ((b Nat))
+      (Either
+       (LessThan a b)
+       (GreaterThanOrEqual a b)))))
+
+(claim step-compare
+  (Pi ((a Nat))
+    (-> (mot-compare a) (mot-compare (add1 a)))))
+
+(claim step-compare-mot
+  (-> Nat Nat U))
+
+(define step-compare-mot
+  (lambda (a n)
+    (Either
+      (LessThan a n)
+      (GreaterThanOrEqual a n))))
+
+;; Convert a relation a-1 vs b-1 to one between and b
+(claim advance-lt-by-one
+  (Pi ((a-1 Nat) (b-1 Nat))
+    (-> (LessThan a-1 b-1)
+          (LessThan (add1 a-1) (add1 b-1)) )))
+
+(claim advance-gte-by-one
+  (Pi ((a-1 Nat) (b-1 Nat))
+    (-> (GreaterThanOrEqual a-1 b-1)
+      (GreaterThanOrEqual (add1 a-1) (add1 b-1)) )))
+
+(claim advance-comparison-by-one
+  (Pi ((a-1 Nat) (b-1 Nat))
+    (-> (Either
+          (LessThan a-1 b-1)
+          (GreaterThanOrEqual a-1 b-1))
+        (Either
+          (LessThan (add1 a-1) (add1 b-1))
+          (GreaterThanOrEqual (add1 a-1) (add1 b-1))))))
+
+(define advance-lt-by-one
+  (lambda (a-1 b-1)
+    (lambda (lt)
+      ;; if 1 + ( a-1 + c ) = b-1 then
+      ;;    1 + (a + c) = b
+      (cons (car lt)
+        (cong (cdr lt)
+          (the (-> Nat Nat) (lambda (n) (add1 n))))))))
+
+(define advance-gte-by-one
+  (lambda (a-1 b-1)
+    (lambda (gte)
+      ;; if a-1 = b-1 + c then
+      ;;    a = b + c
+      (cons (car gte)
+        (cong (cdr gte)
+          (the (-> Nat Nat) (lambda (n) (add1 n))))))))
+
+(define advance-comparison-by-one
+  (lambda (a-1 b-1)
+    (lambda (relation)
+      (ind-Either
+        relation
+        (lambda (x)
+          (Either
+            (LessThan (add1 a-1) (add1 b-1))
+            (GreaterThanOrEqual (add1 a-1) (add1 b-1))))
+        (lambda (lt)
+          (left (advance-lt-by-one a-1 b-1 lt)))
+        (lambda (gte)
+          (right (advance-gte-by-one a-1 b-1 gte)))))))
+
+;; comparison is a function that compares a-1 with its argument
+;; convert it to a function that compares a with with its argument b
+(define step-compare
+  (lambda (a-1 comparison)
+    (lambda (b)
+      (ind-Nat
+        b
+        (lambda (n)
+          (Either
+            (LessThan (add1 a-1) n)
+            (GreaterThanOrEqual (add1 a-1) n)))
+        ;; b = 0, so a >= b, witnessed by a = a + 0
+        (right (cons (add1 a-1) (same (add1 a-1))))
+        ;; b > 0 so the answer is the same as a-1 compared with b-1
+        (lambda (b-1 dontcare)
+          (advance-comparison-by-one a-1 b-1
+           (comparison b-1)))))))
+          
+
+;; Inductively create functions that compare a with b
+(define compare
+  (lambda (a b)
+    ((ind-Nat a
+       mot-compare
+       compare-with-zero
+       step-compare)
+      b)))
+
+(claim add1+=+add1
+  (Pi ((a Nat) (b Nat))
+    (= Nat (add1 (+ a b))
+       (+ a (add1 b)))))
+
+(define add1+=+add1
+  (lambda (a b)
+    (ind-Nat a
+      (lambda (n) (= Nat (add1 (+ n b)) (+ n (add1 b))))
+      (same (add1 b))
+      (lambda (n-1 prev)
+        (cong prev (+ 1))))))
+
+(claim add1-first-argument
+  (Pi ((a Nat) (b Nat))
+    (= Nat (add1 (+ a b))
+       (+ (add1 a) b))))
+
+(define add1-first-argument
+  (lambda (a b)
+    (ind-Nat a
+      (lambda (n) (= Nat (add1 (+ n b)) (+ (add1 n) b)))
+      (same (add1 b))
+      (lambda (n-1 prev)
+        ;; (add1 (+ n-1 b)) = (+ (add1 n-1) b)
+        (cong prev (+ 1))))))
+
+(claim zero-is-left-identity
+  (Pi ((a Nat))
+    (= Nat a (+ 0 a))))
+
+(claim zero-is-right-identity
+  (Pi ((a Nat))
+    (= Nat a (+ a 0))))
+
+(define zero-is-left-identity
+  (lambda (a)
+    (same a)))
+
+(define zero-is-right-identity
+  (lambda (a)
+    (ind-Nat
+      a
+      (lambda (n) (= Nat n (+ n 0)))
+      (same 0)
+      (lambda (n-1 prev)
+        ;; n-1 = (+ n-1 0)
+        (cong prev (+ 1 ))))))
+
+(claim zero-is-commutative
+  (Pi ((a Nat))
+    (= Nat (+ a 0) (+ 0 a))))
+
+(define zero-is-commutative
+  (lambda (a)
+    ;; (+ a 0 ) = a = a = (+ 0 a)
+    (trans
+      (symm
+        (zero-is-right-identity a))
+      (zero-is-left-identity a))))
+      
+(claim addition-is-commutative
+    (Pi ((a Nat) (b Nat))
+      (= Nat (+ a b) (+ b a))))
+
+(define addition-is-commutative
+  (lambda (a b)
+    (ind-Nat b
+      (lambda (n) (= Nat (+ a n) (+ n a)))
+      (zero-is-commutative a)
+      (lambda (n-1 prev)
+        ;; Given (+ a (n-1)) = (+ (n-1) a)
+        ;; 
+        ;;       (add1 (+ a (n-1)) = (+ a (add1 n-1))    ;;;add1+=+add1 
+        ;;       (+ a (add1 n-1)) = (add1 (+ a (n-1))    ;;;sym
+        ;;
+        ;;       (add1 (+ (n-1) a) = (+ (add1 n-1) a)    ;;; add1-first-argument
+        (trans
+          (symm
+            (add1+=+add1 a n-1))
+          (trans
+            (cong prev (+ 1))              
+            (add1-first-argument n-1 a)))
+        ))))
+
+(claim addition-is-associative
+    (Pi ((a Nat) (b Nat) (c Nat))
+      (= Nat (+ (+ a b) c) (+ a (+ b c)))))
+
+(claim zero-is-associative
+    (Pi ((b Nat) (c Nat))
+      (= Nat
+        (+ (+ 0 b) c)
+        (+ 0 (+ b c)))))
+
+(define zero-is-associative
+  (lambda (b c)
+    ;; (+ 0 b) = b                ;; zero left identity, reversed
+    ;; (+ (+ 0 b) c) = (+ b c)    ;; x -> (+ x c) to both sides
+    ;; (+ b c) = (+ 0 (+ b c))    ;; zero left identity
+    (trans
+      (cong
+        (symm (zero-is-left-identity b))
+        (the (-> Nat Nat) (lambda (x) (+ x c))))
+      (zero-is-left-identity (+ b c)))))
+
+(claim add1-first-twice
+  (Pi ((a Nat) (b Nat) (c Nat))
+    (= Nat
+       (add1 (+ (+ a b) c))
+       (+ (+ (add1 a) b) c))))
+
+(define add1-first-twice
+  (lambda (a b c )
+    ;; add1-first-argument gives us
+    ;;       (add1 (+ n-1 b) = (+ (add1 n-1) b)
+    ;; conjugate with x-> x+c gives us
+    ;;       (+ (add1 (+ n-1 b) ) = (+ (+ (add1 n-1) b) c)
+    ;; add1-first-argument again gives us
+    ;;       (add1 (+ (+ n-1 b) c)) = (+ (add1 (+ (n-1 b)) c)
+    (trans
+      (add1-first-argument (+ a b) c)
+      (cong
+        (add1-first-argument a b)
+        (the (-> Nat Nat) (lambda (n) (+ n c)))))))
+    
+(define addition-is-associative
+  (lambda (a b c)
+    (ind-Nat a
+      (lambda (n) (= Nat (+ (+ n b) c) (+ n (+ b c))))
+      (zero-is-associative b c)
+      (lambda (n-1 prev)
+        ;; (+ (+ n-1 b) c) = (+ n-1 (+ b c))
+        ;; add1 => add1 (+ (+ n-1 b) c) = add1 (+ n-1 (+ b c))
+        ;; LHS is add1-first-twice (flipped)
+        ;; add1 + + = + + add1
+        ;; RHS is add1-first
+        ;; add1 + = + add1
+        (trans
+          (symm (add1-first-twice n-1 b c))
+          (trans
+            (cong prev (+ 1))
+            (add1-first-argument n-1 (+ b c))))))))
+
+;; (add1 (+ (add1 (+ a x)) y) == (add1 (+ a (+ (add1 x) y))
+(claim transitive-lemma
+  (Pi ((a Nat) (x Nat) (y Nat))
+    (= Nat
+       (add1 (+ (add1 (+ a x)) y))
+       (add1 (+ a (+ (add1 x) y))))))
+
+(define transitive-lemma
+  (lambda (a x y)
+    (cong
+      (trans                     ;; (+ (add1 (+ a x)) y) = (+ a (+ (add1 x) y))
+        (cong                    ;; (+ (add1 (+ a x)) y) = (+ (+ a (add1 x)) y)
+          (add1+=+add1 a x)      ;; (add1 (+ a x)) = (+ a (add1 x))
+          (the (-> Nat Nat) (lambda (n) (+ n y))))
+        (addition-is-associative a (add1 x) y)) ;; (+ (+ a x') y) = (+ a (+ x' y))
+      (+ 1))))
+
+(claim less-than-is-transitive
+  (Pi ((a Nat) (b Nat) (c Nat))
+    (->
+     (LessThan a b)
+     (->
+      (LessThan b c)
+      (LessThan a c)))))
+
+(define less-than-is-transitive
+  (lambda (a b c)
+    (lambda (X)
+      (lambda (Y)
+        ;; if   1+(a+x)     = b                 (= Nat (add1 (+ a x))                     b)
+        ;; and  1+(b+y)     = c                 (= Nat (add1 (+ b y)) c)
+        ;; then 1+(a+x+y+1) = c
+        ;;                                      (= Nat       (+ (add1 (+ a x)) y)       (+ b y))
+        ;;                                      (= Nat (add1 (+ (add1 (+ a x)) y) (add1 (+ b y)) 
+        (cons
+          ;; (add1 (+ a (+ (add1 x) y )))
+          (+ (add1 (car X)) (car Y))
+          (trans
+            (symm (transitive-lemma a (car X) (car Y))) ;; (add1 (+ (a (+ (add1 x) y)))) = (add1 (+ (add1 (+ a x)) y))
+            (trans  ;; (add1 (+ (add1 (+ a x)) y)) = c
+              (cong (cdr X)
+                (the (-> Nat Nat)
+                  (lambda (n) (add1 (+ n (car Y))))))
+              (cdr Y))))))))
+
+            

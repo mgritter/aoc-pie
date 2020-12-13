@@ -1,0 +1,71 @@
+#lang pie
+
+;; Addition, from The Little Typer 3.24 through 3.27
+(claim + (-> Nat Nat Nat))
+(claim step-+ (-> Nat Nat))
+
+(define step-+
+  (lambda (n)
+    (add1 n)))
+
+(define +
+  (lambda (n j)
+    (iter-Nat n
+      j
+      step-+)))
+
+;; Simple type for demonstration
+
+(claim Tuple
+  (-> Nat U U))
+
+(define Tuple
+  (lambda (n E)
+    (iter-Nat n
+      Trivial
+      (lambda (shorter-tuple) (Pair E shorter-tuple)))))
+
+(claim its-the-same-tuple
+  (Pi ((a Nat)
+       (b Nat)
+       (proof (= Nat a b)))
+    (-> (Tuple a Nat) (Tuple b Nat))))
+
+(define its-the-same-tuple
+  (lambda (a b proof)
+    (lambda (tuple-a)
+      (ind-=
+        proof
+        ;; Type is Pi ((x Nat)) (-> (= Nat a x) U))
+        (lambda (x equality)
+          (Tuple x Nat))
+        tuple-a))))
+
+(claim zero-is-right-identity
+  (Pi ((a Nat))
+    (= Nat a (+ a 0))))
+
+(define zero-is-right-identity
+  (lambda (a)
+    (ind-Nat
+      a
+      (lambda (n) (= Nat n (+ n 0)))
+      (same 0)
+      (lambda (n-1 prev)
+        ;; n-1 = (+ n-1 0)
+        (cong prev (+ 1 ))))))
+
+(claim extend-tuple
+  (Pi ((before Nat)
+       (delta Nat))
+    (-> (Tuple before Nat) (Tuple (+ delta before) Nat))))
+
+(define extend-tuple
+  (lambda (before delta)
+    (lambda (orig)
+      (ind-Nat delta
+        (lambda (n) (Tuple (+ n before) Nat))
+        orig
+        (lambda (n-1 smaller)
+          (cons 0 smaller))))))
+

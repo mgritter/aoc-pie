@@ -1,0 +1,484 @@
+#lang pie
+
+;; Addition, from The Little Typer 3.24 through 3.27
+(claim + (-> Nat Nat Nat))
+(claim step-+ (-> Nat Nat))
+
+(define step-+
+  (lambda (n)
+    (add1 n)))
+
+(define +
+  (lambda (n j)
+    (iter-Nat n
+      j
+      step-+)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Ordering
+;;
+
+;; a is less than b if there exists
+;; c such that a + (c+1) = b
+
+(claim LessThan
+  (Pi ((a Nat) (b Nat))
+    U))
+
+(define LessThan
+  (lambda (a b)
+    (Sigma ((c Nat))
+      (= Nat (add1 (+ a c)) b))))
+
+;; a is gte b if there exists
+;; c such that a = b + c
+
+(claim GreaterThanOrEqual
+  (Pi ((a Nat) (b Nat))
+    U))
+
+(define GreaterThanOrEqual
+  (lambda (a b)
+    (Sigma ((c Nat))
+      (= Nat a (+ b c)))))
+
+;; Every pair of numbers is related in one of those two ways.
+
+(claim compare
+   (Pi ((a Nat) (b Nat))
+    (Either
+     (LessThan a b)
+     (GreaterThanOrEqual a b))))
+
+(claim zero-gte-zero
+   (Either
+     (LessThan 0 0)
+     (GreaterThanOrEqual 0 0)))
+
+(define zero-gte-zero
+    (right (cons 0 (same 0))))
+
+(claim zero-lessthan-b+1
+  (Pi ((b Nat))
+    (Either
+     (LessThan 0 (add1 b))
+     (GreaterThanOrEqual 0 (add1 b)))))
+
+(define zero-lessthan-b+1
+  (lambda (b)
+    (left (cons b (same (add1 b))))))
+
+(claim compare-with-zero
+  (Pi ((b Nat))
+     (Either
+      (LessThan 0 b)
+      (GreaterThanOrEqual 0 b))))
+
+;; compare the number b with zero
+(define compare-with-zero
+  (lambda (b)
+    (ind-Nat b
+      (lambda (n)
+        (Either
+          (LessThan 0 n)
+          (GreaterThanOrEqual 0 n)))
+      zero-gte-zero
+      (lambda (b-1 dontcare)
+        (zero-lessthan-b+1 b-1)))))
+
+(claim mot-compare
+  (-> Nat U))
+
+(define mot-compare
+  (lambda (a)
+    (Pi ((b Nat))
+      (Either
+       (LessThan a b)
+       (GreaterThanOrEqual a b)))))
+
+(claim step-compare
+  (Pi ((a Nat))
+    (-> (mot-compare a) (mot-compare (add1 a)))))
+
+(claim step-compare-mot
+  (-> Nat Nat U))
+
+(define step-compare-mot
+  (lambda (a n)
+    (Either
+      (LessThan a n)
+      (GreaterThanOrEqual a n))))
+
+;; Convert a relation a-1 vs b-1 to one between and b
+(claim advance-lt-by-one
+  (Pi ((a-1 Nat) (b-1 Nat))
+    (-> (LessThan a-1 b-1)
+          (LessThan (add1 a-1) (add1 b-1)) )))
+
+(claim advance-gte-by-one
+  (Pi ((a-1 Nat) (b-1 Nat))
+    (-> (GreaterThanOrEqual a-1 b-1)
+      (GreaterThanOrEqual (add1 a-1) (add1 b-1)) )))
+
+(claim advance-comparison-by-one
+  (Pi ((a-1 Nat) (b-1 Nat))
+    (-> (Either
+          (LessThan a-1 b-1)
+          (GreaterThanOrEqual a-1 b-1))
+        (Either
+          (LessThan (add1 a-1) (add1 b-1))
+          (GreaterThanOrEqual (add1 a-1) (add1 b-1))))))
+
+(define advance-lt-by-one
+  (lambda (a-1 b-1)
+    (lambda (lt)
+      ;; if 1 + ( a-1 + c ) = b-1 then
+      ;;    1 + (a + c) = b
+      (cons (car lt)
+        (cong (cdr lt)
+          (the (-> Nat Nat) (lambda (n) (add1 n))))))))
+
+(define advance-gte-by-one
+  (lambda (a-1 b-1)
+    (lambda (gte)
+      ;; if a-1 = b-1 + c then
+      ;;    a = b + c
+      (cons (car gte)
+        (cong (cdr gte)
+          (the (-> Nat Nat) (lambda (n) (add1 n))))))))
+
+(define advance-comparison-by-one
+  (lambda (a-1 b-1)
+    (lambda (relation)
+      (ind-Either
+        relation
+        (lambda (x)
+          (Either
+            (LessThan (add1 a-1) (add1 b-1))
+            (GreaterThanOrEqual (add1 a-1) (add1 b-1))))
+        (lambda (lt)
+          (left (advance-lt-by-one a-1 b-1 lt)))
+        (lambda (gte)
+          (right (advance-gte-by-one a-1 b-1 gte)))))))
+
+;; comparison is a function that compares a-1 with its argument
+;; convert it to a function that compares a with with its argument b
+(define step-compare
+  (lambda (a-1 comparison)
+    (lambda (b)
+      (ind-Nat
+        b
+        (lambda (n)
+          (Either
+            (LessThan (add1 a-1) n)
+            (GreaterThanOrEqual (add1 a-1) n)))
+        ;; b = 0, so a >= b, witnessed by a = a + 0
+        (right (cons (add1 a-1) (same (add1 a-1))))
+        ;; b > 0 so the answer is the same as a-1 compared with b-1
+        (lambda (b-1 dontcare)
+          (advance-comparison-by-one a-1 b-1
+           (comparison b-1)))))))
+          
+
+;; Inductively create functions that compare a with b
+(define compare
+  (lambda (a b)
+    ((ind-Nat a
+       mot-compare
+       compare-with-zero
+       step-compare)
+      b)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Heaps
+;;
+;; A heap of height 0 is empty
+;; A heap of height N is a root key, and two child heaps of height N-1
+;;
+;; This definition would support only full heaps. So instead we
+;; allow the heap of height N to be a root key OR a heap of height N-1
+
+(claim TreeOfHeight
+  (-> Nat U))
+
+(define TreeOfHeight
+  (lambda (n)
+    (iter-Nat n
+      Trivial
+      (lambda (child)
+        (Either
+          (Pair Nat
+            (Pair child child))
+          child)))))
+
+(claim demo-tree
+  (TreeOfHeight 2))
+
+(define demo-tree
+  (left
+    (cons 3
+      (cons
+        (left
+          (cons 2
+            (cons sole sole)))
+        (right
+          sole)))))
+        
+(claim root-node
+  (Pi ((height Nat))
+    (-> (TreeOfHeight height)
+        (Either Nat Trivial))))
+
+;; Because a tree of height n might *actually* be a tree
+;; of height n-1 in disguise, we have to inductively
+;; build a function to handle all n possibilities.
+
+;; There is only one tree of height 0, the empty tree
+(claim root-base
+  (-> (TreeOfHeight 0)
+      (Either Nat Trivial)))
+
+(define root-base
+  (lambda (tree)
+    (right sole)))
+
+;; The motive for height n returns a type that
+;; handles trees of height n
+
+(claim root-mot
+  (-> Nat U))
+
+(define root-mot
+  (lambda (n)
+    (-> (TreeOfHeight n) (Either Nat Trivial))))
+
+;; The step function takes n-1 and the root-finding-function
+;; for trees of height n-1, and creates the root-finding-funciton
+;; for trees of height n.
+(claim root-step
+  (Pi ((n-1 Nat))
+    (Pi ((prev (root-mot n-1)))
+        (root-mot (add1 n-1)))))
+
+(define root-step
+  (lambda (n-1 prev)
+    (lambda (tree)
+      (ind-Either tree
+        (lambda (t) (Either Nat Trivial))
+        (lambda (l) (left (car l)))
+        (lambda (r) (prev r))))))
+    
+(define root-node
+  (lambda (n tree)
+    ((ind-Nat n
+       root-mot
+       root-base
+       root-step)
+      tree)))
+
+;; FIXME: these return the correct subtree but not the correct height.
+;; So, they work correctly with root-node, but it would be more satisfying
+;; if they explored the value they returned to see if it is a right or a left.
+
+(claim left-subtree
+  (Pi ((height Nat))
+    (Pi ((tree (TreeOfHeight height)))
+        (Sigma ((subtree-height Nat))
+               (TreeOfHeight subtree-height)))))
+
+(define left-subtree
+  (lambda (n tree)
+    ;; build the subtree-finding function for heights 0...n
+    ((ind-Nat n
+       ;; for every h we have the same type, of "subtree"
+       (lambda (h) (-> (TreeOfHeight h)
+                     (Sigma ((st Nat)) (TreeOfHeight st))))
+       ;; if max height is zero, only the trivial tree
+       (lambda (t) (cons 0 sole))
+       ;; given h-1 and the subtree-finding function of up to height h-1
+       ;; compute the subtree-finding function for height h
+       (lambda (h-1 smaller-trees)
+         (lambda (t)
+           (ind-Either t
+             (lambda (x) (Sigma ((st Nat)) (TreeOfHeight st)))
+             (lambda (l)
+               ;; a node exists, pick its left child
+               (cons h-1 (car (cdr l)))) 
+             (lambda (r)
+               ;; no node of this height, try the previous height
+               (smaller-trees r))))))
+      tree)))
+
+(claim right-subtree
+  (Pi ((height Nat))
+    (Pi ((tree (TreeOfHeight height)))
+        (Sigma ((subtree-height Nat))
+               (TreeOfHeight subtree-height)))))
+
+(define right-subtree
+  (lambda (n tree)
+    ;; build the subtree-finding function for heights 0...n
+    ((ind-Nat n
+       ;; for every h we have the same type, of "subtree"
+       (lambda (h) (-> (TreeOfHeight h)
+                     (Sigma ((st Nat)) (TreeOfHeight st))))
+       ;; if max height is zero, only the trivial tree
+       (lambda (t) (cons 0 sole))
+       ;; given h-1 and the subtree-finding function of up to height h-1
+       ;; compute the subtree-finding function for height h
+       (lambda (h-1 smaller-trees)
+         (lambda (t)
+           (ind-Either t
+             (lambda (x) (Sigma ((st Nat)) (TreeOfHeight st)))
+             (lambda (l)
+               ;; a node exists, pick its right child
+               (cons h-1 (cdr (cdr l)))) 
+             (lambda (r)
+               ;; no node of this height, try the previous height
+               (smaller-trees r))))))
+      tree)))
+
+(claim larger-of
+  (-> Nat Nat Nat))
+
+(define larger-of
+  (lambda (a b)
+    (ind-Either
+      (compare a b)
+      (lambda (x) Nat)
+      (lambda (l) b)
+      (lambda (r) a))))
+
+(claim compare-max
+   (Pi ((a Nat) (b Nat))
+     (Pair Nat
+           (Either
+             (LessThan a b)
+             (GreaterThanOrEqual a b)))))
+
+(define compare-max
+  (lambda (a b)
+    ((lambda (cmp)
+       (cons
+         (ind-Either
+           cmp
+           (lambda (x) Nat)
+           (lambda (l) b)
+           (lambda (r) a))
+         cmp))
+      (compare a b))))
+
+(claim promote-tree-1
+  (Pi ((h Nat)
+       (t (TreeOfHeight h)))
+    (TreeOfHeight (add1 h))))
+
+(define promote-tree-1
+  (lambda (h t)
+    (right t)))
+
+(claim its-the-same-tree
+  (Pi ((a Nat)
+       (b Nat)
+       (proof (= Nat a b)))
+    (-> (TreeOfHeight a) (TreeOfHeight b))))
+
+(define its-the-same-tree
+  (lambda (a b proof)
+    (lambda (tree-a)
+      (ind-=
+        proof
+        ;; Type is Pi ((x Nat)) (-> (= Nat a x) U))
+        (lambda (x equality)
+          (TreeOfHeight x))
+        tree-a))))
+
+(claim promote-tree
+  (Pi ((a Nat)
+       (b Nat)
+       (relation (LessThan a b))
+       (t (TreeOfHeight a)))
+    (TreeOfHeight b)))
+
+(claim add1+=+add1
+  (Pi ((a Nat) (b Nat))
+    (= Nat (add1 (+ a b))
+       (+ a (add1 b)))))
+
+(define add1+=+add1
+  (lambda (a b)
+    (ind-Nat a
+      (lambda (n) (= Nat (add1 (+ n b)) (+ n (add1 b))))
+      (same (add1 b))
+      (lambda (n-1 prev)
+        (cong prev (+ 1))))))
+
+(claim zero-is-right-identity
+  (Pi ((a Nat))
+    (= Nat a (+ a 0))))
+
+(define zero-is-right-identity
+  (lambda (a)
+    (ind-Nat
+      a
+      (lambda (n) (= Nat n (+ n 0)))
+      (same 0)
+      (lambda (n-1 prev)
+        ;; n-1 = (+ n-1 0)
+        (cong prev (+ 1 ))))))
+
+(define promote-tree
+  (lambda (a b relation t)
+    ;; relation is (cons c (= Nat (add1 (+ a c)) b))
+    ;; We have to induct on c
+    ;; So we need a proof that (= Nat (+ c a) (+ a c))
+    ;; or, a proof that (= (add1 (+ a x)) = (+ a (add1 x))
+    ;; The latter is simpler (given in the book) but that means we need
+    ;; three separate equality proofs...
+    (its-the-same-tree (add1 (+ a (car relation))) b
+      (cdr relation)
+      (promote-tree-1 (+ a (car relation))
+        (ind-Nat (car relation)
+          ;; Adding delta to the tree gives a taller tree
+          (lambda (delta) (TreeOfHeight (+ a delta)))
+          ;; Base case of adding zero is the original tree
+          (its-the-same-tree a (+ a 0)
+            (zero-is-right-identity a)
+            t)
+          ;; step function 
+          (lambda (delta-1 seedling)
+            (its-the-same-tree
+              (add1 (+ a delta-1))
+              (+ a (add1 delta-1))
+              (add1+=+add1 a delta-1)
+              (promote-tree-1 (+ a delta-1) seedling))))))))
+
+(claim make-tree
+  (Pi ((root Nat)
+       (l (Sigma ((lh Nat)) (TreeOfHeight lh)))
+       (r (Sigma ((rh Nat)) (TreeOfHeight rh))))
+    (TreeOfHeight (add1 (larger-of (car l) (car r))))))
+
+;; OK, the problem here is that we need to distiguish GTE from =
+(define make-tree
+  (lambda (root l r)
+    ((lambda (max-cmp)  ;; larger hight + comparison proving it
+       (ind-either (cdr max-cmp)
+         (lambda (x) (TreeOfHeight (add1 (car max-cmp))))
+         (lambda (lt) ;; l < r, expand l to match and cons
+           (left (cons root
+                   (cons (cdr l)
+                     (cdr r)))))
+         (lambda (gte) ;; l >= r, expand r to match
+           (left (cons root
+                   (cons (cdr l)
+                     (cdr r)))))))
+      (compare-max (car l) (car r)))
+      
+  
+    (left (cons root (cons (cdr l) (cdr r))))))
+   
+;; As a final elaboration, each key must be greater than or equal to its parent (a min-heap)
+
+
+         
