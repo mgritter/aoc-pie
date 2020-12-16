@@ -1,0 +1,27 @@
+#lang pie
+;; Addition, from The Little Typer 3.24 through 3.27
+(claim + (-> Nat Nat Nat))
+(claim step-+ (-> Nat Nat))
+
+(define step-+
+  (lambda (n)
+    (add1 n)))
+
+(define +
+  (lambda (n j)
+    (iter-Nat n
+      j
+      step-+)))
+
+;; Multiplication by 10
+(claim *10 (-> Nat Nat))
+
+(define *10
+  (lambda (n)
+    ((the (-> Nat Nat)
+       (lambda (n5)
+       (+ n5 n5)))
+      ((the (-> Nat Nat)
+         (lambda (n2)
+           (+ n (+ n2 n2))))
+        (+ n n)))))
