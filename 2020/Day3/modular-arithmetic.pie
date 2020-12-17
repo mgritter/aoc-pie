@@ -45,14 +45,16 @@
 ;; We prove that 0 <= x < 30 by identifying
 ;; such that x + (add1 y) = 30
 ;; To ensure modulus is nonzero we work with n-1 instead, which... may be confusing?
+;; but... returning Absurd for n = 0 means everybody has to check for Absurd, or
+;; take n-1 as their argument anwyay.
+;; And allowing n=0 means that we would have to prove in every function that no input
+;; of that type was possible.
 (claim Mod (Pi ((n-1 Nat)) U))
 (define Mod
   (lambda (n-1)
     (Sigma ((x Nat)
             (y Nat))
       (= Nat (+ x (add1 y)) (add1 n-1)))))
-
-
 
 ;; +1 modulo n = increase x, and decrease y, or else reset    
 (claim plus1mod
@@ -110,6 +112,22 @@
     (cons 11 (cons 0 (same 12)))
     (cons 9 (cons 2 (same 12)))))
 
+(claim build-row
+  (-> Nat Nat Nat Nat Nat 
+      Nat Nat Nat Nat Nat
+      Nat Nat Nat Nat Nat
+      Nat Nat Nat Nat Nat
+      Nat Nat Nat Nat Nat
+      Nat Nat Nat Nat Nat
+      Nat
+      (Vec Nat 31)))
 
-       
+(define build-row
+  (lambda (x0 x1 x2 x3 x4 x5 x6 x7 x8 x9
+           x10 x11 x12 x13 x14 x15 x16 x17 x18 x19
+           x20 x21 x22 x23 x24 x25 x26 x27 x28 x29 x30)
+    (vec:: x0 (vec:: x1 (vec:: x2 (vec:: x3 (vec:: x4 (vec:: x5 (vec:: x6 (vec:: x7 (vec:: x8 (vec:: x9
+     (vec:: x10 (vec:: x11 (vec:: x12 (vec:: x13 (vec:: x14 (vec:: x15 (vec:: x16 (vec:: x17 (vec:: x18 (vec:: x19                                                                                 
+      (vec:: x20 (vec:: x21 (vec:: x22 (vec:: x23 (vec:: x24 (vec:: x25 (vec:: x26 (vec:: x27 (vec:: x28 (vec:: x29
+        (vec:: x30 vecnil)))))))))))))))))))))))))))))))))
 

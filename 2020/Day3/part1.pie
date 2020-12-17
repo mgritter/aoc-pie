@@ -1,0 +1,653 @@
+#lang pie
+
+;; Ordinary addition
+(claim + (-> Nat Nat Nat))
+(define +
+  (lambda (n j)
+    (iter-Nat n
+      j
+      (lambda (n) (add1 n)))))
+
+;; Subtraction by 1
+(claim minus1
+  (Pi ((n Nat))
+    (Either
+     (= Nat n zero)
+     (Sigma ((n-1 Nat)) (= Nat n (add1 n-1))))))
+
+(define minus1
+  (lambda (n)
+    (ind-Nat n
+      (lambda (k)
+        (Either
+          (= Nat k 0)
+          (Sigma ((k-1 Nat)) (= Nat k (add1 k-1)))))
+      (left (same 0))
+      (lambda (k-1 decision)
+        (right (cons k-1 (same (add1 k-1))))))))
+
+;; Lemma: we can move an add1 from the second argument of + to the first
+(claim add1+=+add1
+  (Pi ((a Nat) (b Nat))
+    (= Nat
+       (+ (add1 a) b)
+       (+ a (add1 b)))))
+
+(define add1+=+add1
+  (lambda (a b)
+    (ind-Nat a
+      (lambda (n) (= Nat (+ (add1 n) b) (+ n (add1 b))))
+      (same (add1 b))
+      (lambda (n-1 prev)
+        (cong prev (+ 1))))))
+
+;; A congruence class mod N
+;; We prove that 0 <= x < 30 by identifying
+;; such that x + (add1 y) = 30
+;; To ensure modulus is nonzero we work with n-1 instead, which... may be confusing?
+;; but... returning Absurd for n = 0 means everybody has to check for Absurd, or
+;; take n-1 as their argument anwyay.
+;; And allowing n=0 means that we would have to prove in every function that no input
+;; of that type was possible.
+(claim Mod (Pi ((n-1 Nat)) U))
+(define Mod
+  (lambda (n-1)
+    (Sigma ((x Nat)
+            (y Nat))
+      (= Nat (+ x (add1 y)) (add1 n-1)))))
+
+(claim zero-mod
+  (Pi ((n-1 Nat))
+    (Mod n-1)))
+
+(define zero-mod
+  (lambda (n-1)
+    (cons 0 (cons n-1 (same (add1 n-1))))))
+
+;; +1 modulo n = increase x, and decrease y, or else reset    
+(claim plus1mod
+  (Pi ((n-1 Nat))
+    (-> (Mod n-1) (Mod n-1))))
+
+;; Have
+;; (= (+ x        (add1 y)    n)
+;; want
+;; (= (+ (add1 x) (add1 y-1)) n)
+(define plus1mod
+  (lambda (n-1 r)
+    (ind-Either (minus1 (car (cdr r))) ;; y
+      (lambda (x) (Mod n-1))
+      ;; y = 0, wrap around
+      (lambda (z) (zero-mod n-1))
+      ;; y > 0, use the value given to us, and the proof
+      ;; car nz = y-1
+      ;; cdr nz = the evidence that (= y (add1 y-1)))
+      ;;                            (= (add1 y) (add1 (add1 y-1)))
+      ;;     cong to get            (= (+ x (add1 y))
+      ;;                               (+ x (add1 (add1 y-1))))
+      ;;     need proof that        (= (+ x (add1 (add1 y-1)))
+      ;;                               (+ (add1 x) (add1 y-1)))
+      ;;     which is add1+=+add1 above
+      (lambda (nz)
+        (cons (add1 (car r)) ;; (add1 x)
+          (cons (car nz)     ;; y-1
+            (trans               
+              (trans  ;; (= (+ (add1 x) (add1 y-1)) (+ x (add1 y)))
+                (add1+=+add1 (car r) (add1 (car nz)))
+                (symm (cong
+                        (cdr nz)       ;; (= y (add1 y-1)))
+                        (the (-> Nat Nat)
+                          (lambda (z)
+                            (+ (car r) (add1 z)))))))
+              (cdr (cdr r))        ;; (= (+ x (add1 y)) n)
+              )))))))
+            
+(claim add-mod
+  (Pi ((n-1 Nat))
+    (-> (Mod n-1) (Mod n-1) (Mod n-1))))
+
+(define add-mod
+  (lambda (n-1 a b)
+    (iter-Nat (car a)
+      b
+      (lambda (v) (plus1mod n-1 v)))))
+
+(check-same
+  (Mod 11)
+  (cons 8 (cons 3 (same 12)))
+  (add-mod 11
+    (cons 11 (cons 0 (same 12)))
+    (cons 9 (cons 2 (same 12)))))
+
+(claim build-row
+  (-> Nat Nat Nat Nat Nat 
+      Nat Nat Nat Nat Nat
+      Nat Nat Nat Nat Nat
+      Nat Nat Nat Nat Nat
+      Nat Nat Nat Nat Nat
+      Nat Nat Nat Nat Nat
+      Nat
+      (Vec Nat 31)))
+
+(define build-row
+  (lambda (x0 x1 x2 x3 x4 x5 x6 x7 x8 x9
+           x10 x11 x12 x13 x14 x15 x16 x17 x18 x19
+           x20 x21 x22 x23 x24 x25 x26 x27 x28 x29 x30)
+    (vec:: x0 (vec:: x1 (vec:: x2 (vec:: x3 (vec:: x4 (vec:: x5 (vec:: x6 (vec:: x7 (vec:: x8 (vec:: x9
+     (vec:: x10 (vec:: x11 (vec:: x12 (vec:: x13 (vec:: x14 (vec:: x15 (vec:: x16 (vec:: x17 (vec:: x18 (vec:: x19                                                                                 
+      (vec:: x20 (vec:: x21 (vec:: x22 (vec:: x23 (vec:: x24 (vec:: x25 (vec:: x26 (vec:: x27 (vec:: x28 (vec:: x29
+        (vec:: x30 vecnil)))))))))))))))))))))))))))))))))
+
+(claim length
+  (Pi ((E U))
+    (-> (List E) Nat)))
+
+(define length
+  (lambda (E es)
+    (rec-List es
+      0
+      (lambda (e es length_es) (add1 length_es)))))
+
+(claim list->vec
+  (Pi ((E U)
+       (es (List E)))
+    (Vec E (length E es))))
+
+(define list->vec
+  (lambda (E es)
+    (ind-List es
+      (lambda (es) (Vec E (length E es)))
+      vecnil
+      (lambda (e es prev-vec)
+        (vec:: e prev-vec)))))
+
+(claim vec-ref-default
+  (Pi ((E U)
+       (default E)
+       (len Nat))
+    (-> (Vec E len) Nat E)))
+
+(define vec-ref-default
+  (lambda (E default len ev index)
+    ((ind-Vec len ev
+       (lambda (k v) (-> Nat E))
+       (lambda (i) default)
+       (lambda (k e es prev-func)
+         (lambda (i)
+           (which-Nat i
+             e
+             (lambda (i-1)
+               (prev-func i-1))))))
+      index)))               
+
+(claim vec-ref-2d-default
+  (Pi ((E U)
+       (default E)
+       (width Nat)
+       (height Nat))
+    (-> (Vec (Vec E width) height) Nat Nat E)))
+
+(claim default-vec
+  (Pi ((E U)
+       (default E)
+       (width Nat))
+    (Vec E width)))
+
+(define default-vec
+  (lambda (E default width)
+    (ind-Nat width
+      (lambda (n) (Vec E n))
+      vecnil
+      (lambda (n-1 v) (vec:: default v)))))
+
+(define vec-ref-2d-default
+  (lambda (E default width height matrix x y)
+    (vec-ref-default E default width
+      (vec-ref-default (Vec E width)
+        (default-vec E default width)
+        height
+        matrix
+        y)
+     x)))
+
+(claim build-matrix
+  (Pi ((rows (List (Vec Nat 31))))
+    (Sigma ((num-rows Nat))
+           (Vec (Vec Nat 31) num-rows))))
+
+(claim count-trees
+  (Pi ((width-1 Nat)
+       (height Nat)
+       (matrix (Vec (Vec Nat (add1 width-1)) height))
+       (slope-x (Mod width-1))
+       (slope-y Nat))
+    Nat))
+
+(claim State
+  (Pi ((width-1 Nat)) U))
+
+(define State
+  (lambda (width-1)
+    (Pair (Pair (Mod width-1) Nat)  ;; x and y
+      Nat))) ;; count
+
+(claim state->x (Pi ((w-1 Nat)) (-> (State w-1) (Mod w-1))))
+(claim state->y (Pi ((w-1 Nat)) (-> (State w-1) Nat)))
+(claim state->trees (Pi ((w-1 Nat)) (-> (State w-1) Nat))) 
+(define state->x (lambda (x-1 s) (car (car s))))
+(define state->y (lambda (x-1 s) (cdr (car s))))
+(define state->trees (lambda (x-1 s) (cdr s)))
+
+(claim visit
+  (Pi ((width-1 Nat)
+       (height Nat)
+       (matrix (Vec (Vec Nat (add1 width-1)) height))
+       (slope (Mod width-1))
+       (slope-y Nat))
+    (-> (State width-1) (State width-1))))
+
+(define visit
+  (lambda (width-1 height matrix slope-x slope-y state)
+    (cons
+      (cons (add-mod width-1 slope-x (state->x width-1 state))
+        (+ slope-y (state->y width-1 state)))
+      (+ (state->trees width-1 state)
+        (vec-ref-2d-default Nat 0
+          (add1 width-1) height matrix
+          (car (state->x width-1 state))
+          (state->y width-1 state))))))
+
+;; slope-y is *usually* 1, when it is 2 we will spend
+;; a lot of time exploring the default row.
+(define count-trees
+  (lambda (width-1 height matrix slope-x slope-y)
+    (state->trees width-1
+      (ind-Nat height
+        (lambda (h) (State width-1))
+        (cons
+          (cons (zero-mod width-1) 0)
+          0)
+        (lambda (h-1 prev-state)
+          (visit width-1 height matrix slope-x slope-y prev-state))))))
+
+(claim part1
+  (-> (List (Vec Nat 31)) Nat))
+
+(define part1
+  (lambda (input-list)
+    (count-trees
+      30
+      (length (Vec Nat 31) input-list)
+      (list->vec (Vec Nat 31) input-list)
+      (cons 3 (cons 27 (same 31)))
+      1)))
+
+(claim part2
+  (-> (List (Vec Nat 31))
+    (List (Pair (Mod 30) Nat))
+      (List Nat)))
+      
+(claim part2-slopes (List (Pair (Mod 30) Nat)))
+(define part2-slopes
+  (:: (the (Pair (Mod 30) Nat)
+        (cons (cons 1 (cons 29 (same 31)))
+          1))
+    (:: (the (Pair (Mod 30) Nat)
+          (cons (cons 3 (cons 27 (same 31)))
+            1))
+      (:: (the (Pair (Mod 30) Nat)
+            (cons (cons 5 (cons 25 (same 31)))
+            1))
+        (:: (the (Pair (Mod 30) Nat)
+              (cons (cons 7 (cons 23 (same 31)))
+              1))
+          (:: (the (Pair (Mod 30) Nat)
+                (cons (cons 1 (cons 29 (same 31)))
+                  2))
+            nil))))))
+
+(define part2
+  (lambda (input-list slopes-list)
+    ((the (Pi ((height Nat)
+               (matrix (Vec (Vec Nat 31) height)))
+            (List Nat))
+       (lambda (height matrix)
+         (ind-List slopes-list
+           (lambda (es) (List Nat))
+           nil
+           (lambda (e es prev)
+             (::
+               (count-trees
+                 30 height matrix
+                 (car e) (cdr e))
+               prev)))))
+      (length (Vec Nat 31) input-list)
+      (list->vec (Vec Nat 31) input-list))))
+
+(claim input (List (Vec Nat 31)))
+(define input 
+(:: (build-row 0 1 0 0 0 0 0 0 0 0 0 0 1 0 0 0 1 0 0 0 1 0 0 1 0 0 0 0 0 0 0)
+(:: (build-row 0 1 1 1 0 0 0 1 0 1 0 1 1 0 0 1 1 1 0 0 1 0 0 0 1 0 0 0 1 0 0)
+(:: (build-row 1 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0 0 0 1 0 1 0)
+(:: (build-row 1 0 0 0 0 0 1 0 0 1 1 1 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0 0 0 0 1)
+(:: (build-row 0 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 1 0 0 0 1 1 0 0 0 0 0 1 1 1)
+(:: (build-row 0 0 0 0 1 0 0 0 0 0 0 0 0 1 0 1 0 0 0 0 0 0 1 1 0 0 0 0 1 0 1)
+(:: (build-row 0 0 1 0 0 0 0 0 0 0 1 1 0 0 1 0 1 0 1 0 0 0 0 0 0 0 0 0 0 0 0)
+(:: (build-row 1 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0 0 1 0 0 0 1 0 1 0 0 0 1 0 0 0)
+(:: (build-row 0 1 0 0 0 0 0 0 0 0 0 0 0 1 0 1 0 0 0 0 1 0 0 1 1 0 0 0 0 0 0)
+(:: (build-row 0 0 0 0 0 0 1 0 0 1 1 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 1 1 0 0)
+(:: (build-row 0 0 0 0 1 0 1 1 0 1 1 1 1 1 0 0 1 0 1 1 0 0 0 0 0 0 0 0 0 0 1)
+(:: (build-row 0 0 1 0 1 0 0 0 0 0 0 1 0 1 0 1 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0)
+(:: (build-row 0 0 0 1 1 1 0 1 1 0 0 0 0 0 0 1 0 0 1 0 1 0 0 0 1 0 0 0 1 0 0)
+(:: (build-row 0 0 0 1 0 0 1 0 1 0 0 1 0 0 1 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0)
+(:: (build-row 0 0 0 1 0 0 0 0 1 0 0 1 0 0 0 0 0 0 0 0 0 0 0 1 0 1 0 0 0 0 0)
+(:: (build-row 0 0 0 0 1 0 0 0 0 0 0 0 0 0 1 1 1 0 1 0 0 0 0 1 0 0 0 1 0 0 0)
+(:: (build-row 0 0 0 0 1 0 0 1 1 0 0 0 0 0 1 0 1 1 0 0 0 0 1 1 0 1 0 0 0 0 0)
+(:: (build-row 0 0 0 0 0 0 0 0 1 0 1 0 1 0 0 0 0 0 1 0 0 0 0 0 0 0 0 1 0 0 0)
+(:: (build-row 0 0 1 0 0 1 0 0 0 0 0 1 0 1 0 0 0 1 0 1 0 0 0 1 0 1 0 0 0 0 0)
+(:: (build-row 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 1 1)
+(:: (build-row 0 1 1 0 0 0 1 0 0 1 0 0 0 1 1 0 0 0 0 1 0 0 1 0 1 0 0 0 0 1 0)
+(:: (build-row 0 1 0 0 0 0 1 1 0 0 1 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0)
+(:: (build-row 0 0 1 0 1 1 1 0 0 0 0 0 0 0 0 0 1 0 1 1 1 0 0 0 0 0 1 0 0 0 0)
+(:: (build-row 0 0 0 0 1 0 0 1 0 0 0 0 0 0 0 1 1 1 0 1 0 0 0 0 0 0 0 0 0 0 0)
+(:: (build-row 1 0 0 0 1 0 0 0 1 0 1 0 0 0 0 0 0 0 0 0 0 0 1 0 1 0 0 0 0 0 0)
+(:: (build-row 0 1 0 0 1 0 0 0 0 0 0 0 1 1 0 0 0 0 0 1 1 0 0 0 1 0 0 0 0 0 0)
+(:: (build-row 0 0 0 0 1 1 1 1 0 1 0 0 1 0 1 0 1 0 0 0 0 0 0 0 0 0 0 0 1 0 0)
+(:: (build-row 0 1 1 0 0 0 1 0 0 1 0 0 1 0 1 0 0 0 0 1 1 0 0 0 0 0 1 0 0 1 1)
+(:: (build-row 0 0 0 1 0 0 0 0 0 0 1 1 0 0 0 0 1 0 0 0 1 0 1 0 1 1 1 0 0 0 0)
+(:: (build-row 1 1 0 1 0 0 0 0 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 1 0 0 0 1 0)
+(:: (build-row 0 0 0 0 0 0 0 0 0 0 0 1 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 1 1 0 0)
+(:: (build-row 0 0 0 0 0 1 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0)
+(:: (build-row 0 0 0 1 0 0 1 0 0 0 0 0 0 0 0 0 1 0 0 0 1 0 0 0 0 1 0 1 1 0 0)
+(:: (build-row 0 0 0 0 0 1 1 0 0 0 0 0 0 0 0 0 1 0 0 0 1 0 0 0 0 0 0 0 0 1 1)
+(:: (build-row 0 0 0 0 1 0 0 0 0 1 0 0 1 0 1 0 0 0 1 0 0 0 1 1 0 1 0 0 0 0 0)
+(:: (build-row 0 0 0 1 0 1 0 0 1 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 1 0 0 1 0 0 0)
+(:: (build-row 0 0 0 0 0 1 0 1 0 0 0 0 0 1 0 0 0 0 1 0 0 0 1 0 0 0 0 1 0 0 0)
+(:: (build-row 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0 0 1 1 0 0 0 0 0 0 0 0 0 0 1)
+(:: (build-row 0 0 0 0 0 0 0 0 0 0 1 0 0 0 0 0 0 1 0 0 1 1 0 0 0 0 0 1 1 1 0)
+(:: (build-row 0 0 1 0 0 0 0 1 0 0 0 0 0 0 0 0 1 0 1 0 0 0 0 0 1 1 0 0 0 1 0)
+(:: (build-row 1 0 0 1 0 0 0 0 0 0 1 0 1 0 1 1 0 0 0 0 0 0 1 0 1 0 1 1 0 0 0)
+(:: (build-row 0 0 0 0 0 1 0 0 1 0 0 0 0 0 0 0 0 0 1 0 0 0 1 0 1 0 1 0 1 0 1)
+(:: (build-row 1 0 1 0 0 0 1 0 0 0 0 0 0 0 1 0 1 0 0 1 1 0 1 1 0 0 0 0 0 1 1)
+(:: (build-row 0 0 0 0 0 1 0 0 0 0 0 0 1 1 0 0 0 0 0 0 1 0 0 0 0 0 0 0 1 0 0)
+(:: (build-row 1 0 0 0 0 0 1 0 0 0 1 1 0 1 0 1 0 0 0 0 0 0 0 0 1 0 0 0 0 0 0)
+(:: (build-row 1 0 0 0 0 0 0 0 0 0 0 1 0 1 0 0 0 1 0 0 0 0 0 0 0 1 0 0 0 0 0)
+(:: (build-row 0 0 1 0 0 1 0 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0)
+(:: (build-row 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 1 1 1 1 0 1 0 0 0 0 1 0 0 0 1)
+(:: (build-row 1 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0 0 0 0 0 1 1 0 0 0 0 1 0 0 1 0)
+(:: (build-row 1 1 0 0 0 0 1 0 0 0 0 0 1 1 1 0 0 1 1 0 0 0 0 1 0 0 0 0 0 0 1)
+(:: (build-row 1 0 0 0 0 0 1 0 0 0 1 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0 0 0 0)
+(:: (build-row 0 1 0 1 0 0 1 1 0 0 1 1 0 1 0 0 1 0 0 0 0 1 0 1 0 1 0 0 0 1 0)
+(:: (build-row 0 1 0 0 0 1 0 0 1 0 0 0 0 0 1 0 0 1 0 1 0 1 0 0 1 0 0 0 1 1 0)
+(:: (build-row 0 0 1 0 1 0 1 0 1 0 1 0 1 0 0 0 0 1 1 0 0 0 1 0 0 0 0 0 0 0 0)
+(:: (build-row 0 0 0 0 0 0 0 1 1 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0 1 0 0 0 1 0)
+(:: (build-row 0 0 0 1 0 0 1 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 1 0 0 0 0 1 0 0 0)
+(:: (build-row 0 0 0 0 0 1 0 0 1 0 0 0 0 1 0 0 1 0 1 1 0 0 0 1 0 0 0 0 0 0 0)
+(:: (build-row 0 0 1 1 0 0 1 0 0 0 0 0 0 0 1 0 1 0 0 1 0 0 0 0 1 0 0 0 0 0 0)
+(:: (build-row 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0 1 0 0 1 0 0 0 0 0 0)
+(:: (build-row 0 0 0 0 1 0 0 0 0 0 0 0 0 1 0 0 0 1 0 0 0 0 1 0 0 0 1 0 1 0 0)
+(:: (build-row 0 0 0 1 0 0 0 1 0 0 0 0 0 0 0 0 0 0 1 1 0 0 0 0 1 1 0 1 0 0 0)
+(:: (build-row 0 0 1 1 1 0 1 0 1 1 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0 0 1 0 1 0 1)
+(:: (build-row 1 1 0 0 0 0 0 0 0 1 1 0 1 0 0 1 0 1 0 1 0 0 0 0 0 1 0 1 0 1 0)
+(:: (build-row 0 0 1 1 1 1 1 0 0 0 1 0 0 0 0 0 0 1 1 0 0 0 1 0 0 0 0 0 0 0 0)
+(:: (build-row 0 0 0 1 0 1 1 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0 0 1)
+(:: (build-row 0 0 1 0 0 0 0 0 0 1 0 0 0 1 0 0 0 0 1 0 1 0 0 1 1 0 0 1 0 0 0)
+(:: (build-row 1 0 1 0 0 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 1 0 0 0 0 0)
+(:: (build-row 1 1 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0 1 0 0 0 0 0 1 0 0 0 0 0 0 1)
+(:: (build-row 0 0 0 0 1 0 0 0 0 0 0 0 1 0 0 1 0 0 1 1 0 0 0 0 1 0 1 0 0 0 0)
+(:: (build-row 0 0 0 1 0 0 0 1 1 0 0 0 0 1 0 0 0 0 0 0 0 0 0 1 0 0 1 0 0 0 0)
+(:: (build-row 0 0 0 1 1 1 1 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 1 0 0 0 0 1 0)
+(:: (build-row 1 0 1 0 0 0 0 0 0 0 0 1 1 0 0 0 0 1 0 0 1 0 0 1 0 0 0 1 0 0 0)
+(:: (build-row 0 0 0 0 1 0 1 0 1 1 1 0 0 0 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 1)
+(:: (build-row 1 0 1 0 0 0 0 0 0 1 0 0 0 0 0 1 0 1 1 0 0 0 0 1 0 1 0 0 0 1 0)
+(:: (build-row 1 0 0 0 0 1 1 0 1 0 0 1 1 0 0 1 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0)
+(:: (build-row 0 1 0 0 0 0 0 1 1 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1)
+(:: (build-row 0 0 0 1 0 1 0 0 0 0 0 0 0 0 1 0 0 0 1 0 1 0 0 0 0 0 0 0 0 1 0)
+(:: (build-row 0 0 1 0 0 0 0 1 0 0 0 0 0 0 1 0 0 0 0 0 1 1 0 0 0 0 0 0 0 0 1)
+(:: (build-row 0 0 0 0 1 0 0 0 1 0 0 0 0 1 0 0 0 1 0 0 0 0 0 1 0 1 1 0 0 0 0)
+(:: (build-row 0 0 0 1 0 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 1 1 0 0 0 0 0 0 0 0 0)
+(:: (build-row 0 1 0 1 1 0 0 0 0 0 0 1 0 0 0 0 0 0 1 0 0 0 0 1 1 0 0 0 0 0 0)
+(:: (build-row 0 1 0 0 0 1 0 0 0 1 1 1 0 1 0 0 0 0 0 0 0 0 0 0 0 0 1 0 0 1 0)
+(:: (build-row 0 1 0 0 0 0 0 0 0 0 0 0 0 1 0 1 0 1 0 0 0 0 1 0 0 0 1 0 0 1 0)
+(:: (build-row 0 1 0 0 0 0 0 1 0 0 0 0 1 0 0 0 0 0 1 0 0 0 1 0 0 0 0 0 0 0 0)
+(:: (build-row 0 1 0 0 1 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 1 0 1 0 1 1 0 1)
+(:: (build-row 0 0 0 1 1 1 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0 0 1 1 0 0 0 0 0)
+(:: (build-row 0 0 0 1 0 1 0 1 1 0 1 0 0 1 0 0 0 0 0 0 0 0 0 0 1 0 0 1 0 0 0)
+(:: (build-row 0 1 0 1 0 1 0 0 0 0 1 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 1)
+(:: (build-row 0 0 0 0 0 0 0 1 0 1 0 0 1 0 0 0 1 0 1 0 1 0 0 0 0 0 0 0 0 1 0)
+(:: (build-row 0 0 0 0 1 0 1 0 0 0 1 0 0 1 1 0 0 0 0 1 0 0 0 0 0 0 0 0 1 0 1)
+(:: (build-row 0 0 0 0 0 0 0 0 0 0 1 0 0 0 1 0 0 0 0 0 0 0 1 0 0 1 0 0 0 0 1)
+(:: (build-row 0 0 0 1 1 1 0 0 0 0 0 1 0 1 0 0 0 0 1 0 0 0 0 0 1 1 0 0 0 0 0)
+(:: (build-row 1 0 0 0 0 0 0 1 0 0 1 0 0 1 0 0 0 0 0 0 0 0 1 0 1 0 0 0 1 0 0)
+(:: (build-row 1 0 0 0 0 0 0 1 0 0 0 0 1 0 0 1 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0)
+(:: (build-row 0 0 0 1 0 0 0 0 1 0 0 0 0 0 0 0 0 1 0 0 0 1 0 0 1 0 0 0 0 0 0)
+(:: (build-row 0 0 0 1 0 0 1 1 1 0 0 0 0 0 0 0 0 1 0 1 0 0 0 0 0 0 0 0 0 1 1)
+(:: (build-row 1 0 0 0 0 0 0 1 0 1 0 0 1 1 1 0 0 1 0 0 0 0 0 0 0 0 1 1 1 0 0)
+(:: (build-row 0 1 0 1 0 0 0 0 0 0 1 0 1 0 0 1 0 1 0 1 0 1 0 0 0 0 0 1 0 0 1)
+(:: (build-row 1 0 0 0 0 1 0 0 0 0 0 1 0 0 1 1 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0)
+(:: (build-row 0 0 0 0 1 0 0 0 0 0 0 1 0 0 0 1 0 0 1 0 0 1 0 1 0 1 1 0 1 0 0)
+(:: (build-row 0 0 0 0 0 0 0 0 1 0 1 0 0 0 1 0 0 0 1 0 0 1 0 0 0 1 0 1 0 0 1)
+(:: (build-row 0 0 0 0 0 1 1 0 0 0 0 0 0 0 0 1 0 0 0 1 0 0 0 0 1 0 0 0 1 0 0)
+(:: (build-row 0 0 0 0 1 0 0 0 1 1 0 0 1 0 0 0 0 0 0 0 0 1 0 0 0 0 1 1 0 1 0)
+(:: (build-row 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 0 1 1 0)
+(:: (build-row 0 0 1 1 0 0 0 0 0 1 0 0 0 0 0 1 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0)
+(:: (build-row 0 0 0 0 0 1 0 1 0 0 0 0 0 0 0 0 0 0 0 1 1 0 1 0 0 0 0 0 1 0 0)
+(:: (build-row 0 1 0 0 1 1 0 0 1 0 1 1 0 1 0 0 0 1 1 0 1 0 0 0 0 1 0 0 0 0 1)
+(:: (build-row 0 1 1 0 0 0 0 0 1 0 1 1 0 0 0 0 0 0 1 0 0 0 0 1 0 0 1 0 0 1 0)
+(:: (build-row 0 0 0 0 0 0 0 1 0 1 1 0 0 0 0 0 0 1 0 0 0 0 1 0 0 0 1 0 1 0 0)
+(:: (build-row 0 1 0 0 0 0 0 0 0 0 1 0 0 0 0 0 0 1 0 0 0 1 1 0 1 0 0 0 0 1 0)
+(:: (build-row 0 0 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 1 1 1)
+(:: (build-row 1 0 1 0 0 0 0 0 0 0 0 0 1 0 0 1 0 0 1 0 0 0 0 1 0 0 0 1 0 0 0)
+(:: (build-row 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 1 0 0 0 0 0 0 1 0 1 0 1 0 0)
+(:: (build-row 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0)
+(:: (build-row 0 1 1 1 0 0 0 1 1 0 1 0 1 0 0 0 0 0 0 0 0 0 0 1 0 0 0 1 0 0 1)
+(:: (build-row 0 0 0 0 1 0 0 0 0 0 1 0 0 0 1 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0)
+(:: (build-row 0 0 0 0 0 0 0 1 1 0 0 0 0 0 0 0 0 1 0 0 1 0 0 0 0 0 0 0 1 0 0)
+(:: (build-row 0 0 0 0 1 1 0 0 1 0 1 0 0 0 0 1 0 0 0 0 1 0 0 1 0 0 0 1 0 0 1)
+(:: (build-row 0 0 1 0 1 1 1 1 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 1 0 1 0 0 0 0 1)
+(:: (build-row 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0 1 0 0 1 0 0 0 0 0 1 0 0 0 1 0)
+(:: (build-row 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0 1)
+(:: (build-row 0 0 1 1 0 1 0 0 0 1 0 0 0 0 0 1 0 0 0 0 1 0 1 0 0 0 0 1 1 0 0)
+(:: (build-row 0 1 0 0 0 1 0 0 0 0 0 0 0 1 0 0 1 1 1 1 0 0 1 0 0 1 0 0 0 1 0)
+(:: (build-row 1 0 0 0 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 1 0)
+(:: (build-row 0 0 0 0 0 0 1 1 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0)
+(:: (build-row 0 0 1 1 0 0 0 1 0 1 0 0 0 0 0 0 0 0 0 0 1 1 0 1 0 0 0 1 0 0 0)
+(:: (build-row 0 0 0 0 1 0 1 0 1 0 1 0 0 0 1 1 0 0 0 1 0 0 0 1 0 0 0 1 1 1 1)
+(:: (build-row 0 0 0 0 0 0 0 0 0 0 0 0 0 1 1 0 0 1 0 1 1 1 0 0 0 1 0 0 0 0 0)
+(:: (build-row 1 0 1 0 0 0 0 1 0 1 0 0 1 0 0 1 1 0 0 0 0 0 0 0 0 1 0 0 1 1 0)
+(:: (build-row 0 0 0 0 0 1 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0)
+(:: (build-row 0 0 0 1 0 0 1 1 0 0 0 0 0 0 1 0 0 1 1 0 0 0 0 0 0 0 0 0 0 0 1)
+(:: (build-row 1 0 0 1 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 1 1 0 0 1 0 0 0 0 0 0)
+(:: (build-row 0 1 1 0 0 0 0 1 0 1 0 0 0 0 1 1 1 0 0 0 0 0 0 0 1 0 0 1 0 0 0)
+(:: (build-row 0 0 0 0 0 1 0 0 1 0 1 0 0 0 0 1 1 0 0 0 1 0 0 0 0 0 0 1 0 0 0)
+(:: (build-row 0 1 0 0 0 0 0 0 0 0 0 1 1 1 1 1 0 0 0 0 0 0 1 0 0 0 1 0 0 0 1)
+(:: (build-row 0 0 0 0 0 0 0 1 0 1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 0 0 1 0)
+(:: (build-row 1 0 0 0 0 1 0 0 0 0 0 0 0 1 1 1 0 0 0 0 0 0 0 1 0 0 1 0 0 0 0)
+(:: (build-row 1 0 0 0 0 0 0 1 1 0 1 1 1 0 0 0 1 0 0 0 0 0 0 0 1 0 0 0 0 0 0)
+(:: (build-row 0 0 0 0 0 0 0 1 0 0 0 1 0 0 0 0 0 0 1 0 0 0 0 1 0 0 1 0 0 0 0)
+(:: (build-row 0 1 0 1 1 1 1 0 0 0 0 0 0 0 1 0 0 0 1 0 1 1 0 0 0 0 0 0 0 0 0)
+(:: (build-row 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 1 0 1 0 0 0 0 0 0 1 0 0 0 0)
+(:: (build-row 0 0 0 0 0 0 1 1 0 0 0 0 1 0 1 0 0 0 0 0 0 1 0 0 0 0 0 0 1 0 0)
+(:: (build-row 0 0 0 0 1 1 0 0 0 1 1 0 0 0 0 1 0 0 0 0 0 0 0 0 0 1 0 0 0 0 0)
+(:: (build-row 0 0 0 0 0 0 1 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 1 0 1 0 0 0 1)
+(:: (build-row 0 0 0 0 1 0 1 0 0 0 0 0 0 1 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0)
+(:: (build-row 0 1 0 1 0 0 1 1 1 1 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1)
+(:: (build-row 0 0 0 0 1 0 1 0 1 0 1 0 0 0 0 0 0 1 1 0 0 0 1 1 0 0 0 0 0 0 1)
+(:: (build-row 0 0 0 0 0 1 0 1 0 0 1 0 0 0 0 0 0 1 0 0 0 0 1 0 0 0 0 0 0 1 0)
+(:: (build-row 0 0 0 0 0 0 0 0 0 0 1 0 1 0 0 0 0 0 1 0 0 0 0 0 0 0 1 0 0 0 1)
+(:: (build-row 0 0 1 1 0 0 0 0 0 0 1 1 0 1 0 0 0 1 1 0 1 0 0 0 0 0 0 1 0 0 1)
+(:: (build-row 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 1 0 0 1 0 0 0 1 1 1 0 0 0 0 0)
+(:: (build-row 0 1 0 1 0 0 1 1 1 0 0 1 0 0 0 0 0 0 0 1 1 0 0 0 1 0 0 0 0 0 1)
+(:: (build-row 0 1 0 0 0 0 1 0 1 0 0 0 0 0 0 0 1 0 0 0 0 0 1 1 0 0 0 0 1 0 0)
+(:: (build-row 1 0 0 0 0 0 0 0 0 0 0 0 0 0 1 1 1 0 0 0 1 1 0 1 0 1 0 0 0 1 0)
+(:: (build-row 1 0 0 0 0 0 0 0 0 1 0 1 0 0 0 0 0 0 0 0 1 0 1 0 0 0 1 0 1 0 1)
+(:: (build-row 1 1 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0 0 0 0 1 0 0 0)
+(:: (build-row 0 0 0 1 0 1 0 0 0 1 0 0 1 0 1 0 0 1 1 0 0 0 0 1 0 0 0 1 0 0 0)
+(:: (build-row 1 0 0 0 0 0 1 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0)
+(:: (build-row 0 0 0 0 0 0 0 1 1 1 0 0 0 1 1 0 0 1 0 0 0 0 0 1 0 0 0 0 0 0 0)
+(:: (build-row 1 0 1 0 0 0 0 0 0 0 0 0 1 0 0 1 0 1 0 0 0 0 0 0 0 0 0 1 0 0 0)
+(:: (build-row 0 1 0 1 0 0 0 0 0 0 0 0 0 0 0 0 1 0 0 0 0 0 1 1 0 0 0 0 0 1 0)
+(:: (build-row 0 0 0 0 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 0 0 0 1 0 0 0 0)
+(:: (build-row 0 0 0 1 0 1 0 0 0 0 1 0 0 1 0 1 1 0 0 0 0 1 0 1 0 0 0 0 0 0 1)
+(:: (build-row 0 1 0 0 0 0 0 1 0 1 0 0 1 0 0 0 0 0 0 0 0 0 0 0 1 0 1 0 1 0 0)
+(:: (build-row 1 0 0 0 0 0 0 1 0 0 1 0 0 0 0 0 0 1 1 0 1 0 1 0 1 0 1 0 0 1 0)
+(:: (build-row 0 0 0 0 0 0 0 1 0 1 0 0 1 0 0 0 0 0 0 1 0 1 0 1 0 0 1 0 1 0 1)
+(:: (build-row 0 0 0 0 0 0 0 0 0 0 1 0 0 0 1 0 0 0 0 0 0 0 0 0 0 1 0 1 1 0 0)
+(:: (build-row 0 1 0 1 0 0 1 1 1 1 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0 1 0 0)
+(:: (build-row 0 0 0 0 0 0 1 0 1 0 0 0 0 0 1 0 0 1 0 0 1 0 0 1 0 0 0 0 0 1 0)
+(:: (build-row 0 0 0 0 0 1 1 0 0 1 0 1 0 1 0 0 1 0 0 1 0 0 0 1 0 0 0 0 0 1 1)
+(:: (build-row 0 0 0 0 0 0 0 0 0 0 0 0 1 0 1 0 0 0 0 1 0 1 0 0 0 0 1 0 0 0 0)
+(:: (build-row 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0 0 1 0 0 0 1 0 0 0 1 0 0 0 0 0)
+(:: (build-row 0 0 0 0 0 1 0 0 0 0 0 0 1 0 0 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0)
+(:: (build-row 0 0 1 1 0 0 0 0 1 0 0 1 0 0 0 0 0 0 0 0 0 0 0 1 0 0 1 1 0 0 0)
+(:: (build-row 1 1 1 0 0 0 1 0 1 1 0 0 1 0 1 0 0 0 1 1 1 1 0 0 0 0 1 1 1 0 0)
+(:: (build-row 0 0 1 0 1 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 1 0 0 0 0 1 0 0 1 1 1)
+(:: (build-row 1 1 0 0 0 0 0 0 0 0 0 0 0 1 1 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0 0)
+(:: (build-row 0 0 0 0 1 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 1)
+(:: (build-row 0 0 0 1 0 0 0 1 1 0 0 0 0 1 0 1 0 0 1 0 0 0 1 1 0 0 0 0 0 1 0)
+(:: (build-row 0 0 1 0 0 1 1 0 0 0 1 0 0 0 0 0 0 0 1 0 0 1 0 0 1 0 0 0 0 0 1)
+(:: (build-row 0 0 0 1 0 0 0 1 0 0 0 0 1 1 1 1 0 0 0 0 0 0 0 0 1 1 0 1 0 0 0)
+(:: (build-row 0 0 0 0 1 0 0 0 0 0 0 0 0 1 0 0 1 0 1 0 0 0 0 0 0 0 0 0 1 0 0)
+(:: (build-row 0 1 0 0 0 0 0 0 0 0 0 0 1 0 0 0 1 0 0 1 0 1 0 1 0 0 0 0 0 0 1)
+(:: (build-row 0 0 0 0 1 0 1 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 1 0 0 0 0 1 0 0 0)
+(:: (build-row 0 0 0 1 0 0 0 0 1 0 0 0 1 1 0 0 0 0 0 0 0 1 0 0 0 1 0 0 0 0 0)
+(:: (build-row 0 0 0 0 1 0 0 1 0 0 0 0 0 0 0 1 0 1 1 0 1 1 0 1 1 0 0 0 1 0 0)
+(:: (build-row 1 1 0 0 0 0 1 1 0 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 1 1 0 0 0 0)
+(:: (build-row 0 1 0 1 0 0 1 0 0 0 0 0 0 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 1 0 0)
+(:: (build-row 0 0 0 1 0 1 1 0 0 0 1 1 0 0 1 0 0 0 1 0 0 0 1 1 0 0 0 0 0 0 0)
+(:: (build-row 0 0 0 0 0 1 0 0 1 1 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0 1 0)
+(:: (build-row 0 0 0 1 0 0 0 0 0 0 0 0 1 1 0 1 0 0 0 0 1 1 0 0 0 0 0 1 0 1 1)
+(:: (build-row 0 0 0 1 0 0 0 1 0 0 1 1 0 0 0 1 0 0 0 1 0 1 0 0 0 1 0 0 0 0 0)
+(:: (build-row 0 1 0 0 0 0 0 0 1 0 0 0 1 0 0 1 0 1 1 0 0 0 0 0 0 0 1 0 0 0 1)
+(:: (build-row 0 0 0 0 0 1 0 0 0 0 0 0 0 1 1 1 0 1 1 0 0 0 1 0 0 0 0 0 0 0 0)
+(:: (build-row 1 0 0 0 0 0 1 0 0 1 0 0 0 0 0 0 0 0 1 1 0 1 1 0 1 0 1 1 0 0 1)
+(:: (build-row 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 1 0 1 1 0 0 0 1 0 0 0)
+(:: (build-row 1 0 0 0 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1)
+(:: (build-row 0 0 1 1 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0 1 0 0 1 0 0 1 1 0)
+(:: (build-row 0 1 0 0 0 0 1 1 1 0 1 0 0 1 0 0 0 0 0 0 0 0 0 1 1 1 0 0 0 0 1)
+(:: (build-row 0 1 0 0 0 0 1 0 1 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0 1 1 0 1 1)
+(:: (build-row 0 1 0 1 1 0 1 0 0 0 0 1 0 0 0 0 0 0 0 1 0 1 0 0 0 0 0 0 1 0 0)
+(:: (build-row 0 1 0 0 0 0 0 0 0 0 0 0 0 0 1 0 1 0 0 0 0 0 1 0 0 0 0 0 0 0 0)
+(:: (build-row 0 0 1 0 0 0 0 0 0 1 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0)
+(:: (build-row 1 0 1 0 0 0 1 0 0 0 0 0 0 0 0 1 1 0 0 0 1 0 1 0 0 0 0 0 0 1 0)
+(:: (build-row 0 0 0 0 1 0 0 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 1 1 0 0 1 0 0 0)
+(:: (build-row 0 0 0 0 0 0 0 0 0 0 1 1 0 0 0 0 0 1 0 1 0 0 0 0 0 0 1 0 0 0 0)
+(:: (build-row 0 1 1 0 1 0 0 1 0 0 0 0 1 0 0 0 0 0 0 0 1 0 0 0 1 0 0 0 1 1 0)
+(:: (build-row 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0 0 0 1 0 1 1 0 0 0 0 0)
+(:: (build-row 0 0 0 0 1 1 1 0 0 0 0 0 0 0 1 0 0 1 0 0 1 0 0 0 0 0 0 0 0 0 1)
+(:: (build-row 0 1 0 0 0 0 0 1 0 0 1 1 0 0 0 1 1 1 0 0 0 0 0 0 1 0 0 0 0 0 1)
+(:: (build-row 0 1 0 1 1 0 0 0 0 0 0 0 0 0 0 1 0 0 1 0 0 1 0 0 0 0 0 0 0 0 1)
+(:: (build-row 0 0 0 0 0 0 0 1 0 1 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0 0 0 1 1)
+(:: (build-row 1 0 0 0 1 0 1 0 1 0 0 0 0 0 0 0 1 0 0 1 0 0 0 0 0 0 1 0 1 1 0)
+(:: (build-row 0 1 0 0 0 0 1 0 1 0 0 0 0 0 0 1 0 0 0 1 0 0 0 0 0 0 0 0 0 0 1)
+(:: (build-row 0 0 0 0 0 1 0 0 0 0 0 0 0 0 1 1 0 0 0 0 1 0 1 1 0 0 0 0 0 1 0)
+(:: (build-row 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0 0 1 0 1 0 1 0)
+(:: (build-row 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 1 0 0 0 0 1 0 0 0 0 0 0 0 1 0 1)
+(:: (build-row 0 0 0 0 0 1 0 1 0 0 1 1 0 0 1 0 0 0 0 0 1 0 0 1 0 0 0 0 0 0 0)
+(:: (build-row 0 0 0 1 0 0 1 0 0 1 0 0 0 1 0 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0)
+(:: (build-row 1 0 0 0 0 0 1 0 1 0 1 0 0 0 0 0 0 0 0 0 0 1 0 0 1 0 1 0 1 0 0)
+(:: (build-row 0 0 0 0 0 1 1 0 0 1 1 0 0 0 0 0 1 0 1 0 0 1 0 0 0 0 0 0 0 0 0)
+(:: (build-row 1 0 1 0 0 1 1 0 0 0 0 1 1 0 0 0 0 0 0 1 1 0 0 0 1 0 1 1 0 0 1)
+(:: (build-row 0 0 1 1 0 0 1 0 0 0 0 0 1 0 0 1 0 0 0 0 0 0 0 0 0 0 1 1 0 0 0)
+(:: (build-row 0 0 0 0 0 0 1 0 1 0 0 0 1 0 0 1 0 0 0 0 0 0 0 1 1 0 0 0 0 0 1)
+(:: (build-row 0 0 1 0 1 0 0 0 0 0 0 0 1 0 1 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0)
+(:: (build-row 0 0 0 0 0 1 0 0 0 0 0 0 0 0 1 1 0 0 1 0 0 0 0 0 1 1 1 1 0 1 0)
+(:: (build-row 0 1 0 0 0 0 0 1 0 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 1 0 0 1 1 0 0)
+(:: (build-row 0 0 0 0 0 0 1 0 0 0 1 0 0 0 0 1 0 1 1 0 0 0 1 0 0 0 0 0 0 0 1)
+(:: (build-row 0 0 1 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0 0 1 0 0 0 0 0)
+(:: (build-row 0 0 0 0 0 1 1 1 0 1 0 0 1 1 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0)
+(:: (build-row 0 0 0 1 1 0 0 0 1 1 0 0 0 1 0 0 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1)
+(:: (build-row 1 0 0 0 0 0 0 0 0 1 0 1 0 0 0 0 0 0 0 0 0 0 1 1 0 0 1 0 0 0 0)
+(:: (build-row 1 0 0 0 0 0 0 0 0 1 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0 1 0 0 0 1 0)
+(:: (build-row 0 0 0 1 1 0 1 0 1 1 0 0 1 0 0 0 1 1 0 0 0 0 0 0 1 0 0 0 0 0 0)
+(:: (build-row 1 0 0 0 0 0 0 0 0 1 1 0 0 0 0 1 0 1 0 0 1 1 0 0 0 0 0 1 0 0 1)
+(:: (build-row 0 0 0 1 1 1 1 0 0 0 0 0 0 1 0 0 1 0 0 0 0 0 0 1 0 1 0 0 0 0 0)
+(:: (build-row 0 1 0 0 0 0 0 0 1 0 0 0 1 0 0 0 1 0 1 0 0 0 0 0 1 1 0 0 0 0 1)
+(:: (build-row 0 0 0 0 0 1 1 1 0 0 1 1 0 0 1 0 0 0 1 0 0 0 0 0 0 0 0 0 0 1 1)
+(:: (build-row 1 1 0 1 1 0 0 0 0 1 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0)
+(:: (build-row 0 0 0 1 1 0 1 0 0 0 0 0 0 0 1 0 1 1 1 0 0 0 0 0 0 1 0 0 1 0 0)
+(:: (build-row 0 0 0 0 0 1 0 1 0 1 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 1 0 0 1 0 1)
+(:: (build-row 1 0 0 0 1 0 0 0 1 0 1 1 0 0 1 0 0 0 0 1 1 1 0 0 0 0 0 0 0 1 0)
+(:: (build-row 0 1 0 1 0 0 1 1 0 0 0 0 0 1 0 0 0 0 1 0 0 0 1 1 0 0 0 0 0 0 0)
+(:: (build-row 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0 1 0 0 0 0 1 0 0 0 1 0 1 1 0 0)
+(:: (build-row 0 0 0 0 0 0 0 0 0 0 1 0 0 0 0 1 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0)
+(:: (build-row 0 1 0 0 0 0 1 0 0 1 0 0 0 1 0 0 0 1 0 0 0 0 0 0 0 1 0 0 0 0 1)
+(:: (build-row 1 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0 0 0 0 0 1 1 1 1 0 1 1)
+(:: (build-row 0 0 0 0 0 0 0 1 0 0 0 0 1 1 1 0 0 0 0 1 0 0 0 0 1 0 1 0 1 0 0)
+(:: (build-row 1 1 1 0 1 0 0 0 0 0 0 0 0 1 1 0 1 0 0 0 0 0 0 0 1 0 0 0 0 0 0)
+(:: (build-row 1 0 0 1 0 0 0 1 0 0 1 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0)
+(:: (build-row 1 0 0 0 1 1 1 0 0 1 0 0 0 1 0 0 1 0 0 1 1 0 1 0 1 1 1 0 1 0 0)
+(:: (build-row 0 0 1 0 0 1 0 0 0 1 1 0 0 0 0 0 0 1 1 0 0 0 0 0 0 0 0 0 0 0 0)
+(:: (build-row 0 1 0 0 1 0 0 0 0 0 0 0 1 0 0 1 1 1 0 0 1 1 0 0 0 1 0 0 0 0 0)
+(:: (build-row 0 0 0 0 1 0 0 1 0 0 1 1 0 1 0 1 0 0 0 0 0 1 1 0 0 0 1 0 1 0 1)
+(:: (build-row 0 0 0 0 1 0 0 0 0 1 0 0 0 0 0 1 0 0 1 0 0 0 0 1 0 0 0 0 0 0 0)
+(:: (build-row 0 0 1 1 0 0 1 0 0 0 0 1 0 1 0 0 0 1 1 0 0 1 0 0 0 0 0 0 0 0 0)
+(:: (build-row 0 0 0 0 0 1 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 1 0 1 0 0 0 0 0 0)
+(:: (build-row 0 0 0 1 0 0 0 0 0 0 0 0 1 0 1 0 0 1 0 0 1 0 0 0 0 0 0 1 0 0 1)
+(:: (build-row 0 1 0 0 0 1 1 0 0 0 0 1 0 0 0 0 1 0 1 0 1 1 0 0 0 0 0 0 1 0 1)
+(:: (build-row 0 0 1 0 0 0 0 0 0 0 0 0 0 0 1 0 0 1 1 1 0 1 1 0 0 0 0 0 1 0 0)
+(:: (build-row 0 1 0 1 1 1 1 1 1 0 1 0 0 1 1 0 0 0 0 0 0 0 1 0 0 1 0 0 0 0 0)
+(:: (build-row 0 0 0 0 0 1 0 0 1 0 0 0 0 0 0 1 1 0 1 0 1 0 0 0 1 0 0 0 0 0 0)
+(:: (build-row 0 0 0 0 1 0 0 0 0 1 0 0 1 0 0 0 0 0 1 0 0 0 0 0 0 0 1 0 1 0 1)
+(:: (build-row 0 0 0 0 0 1 0 0 0 0 0 0 0 0 1 1 0 0 0 0 0 1 0 0 0 0 0 1 0 1 1)
+(:: (build-row 0 0 0 0 0 0 0 0 1 0 0 0 0 1 0 0 0 1 0 0 0 1 0 1 0 1 0 0 0 1 0)
+(:: (build-row 0 0 0 1 0 1 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 1 0 0 0 0 0 1 0)
+(:: (build-row 1 0 1 0 1 0 0 0 1 1 1 0 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 1 0)
+(:: (build-row 0 1 0 0 0 0 0 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 0 0 1 1 0 0 0)
+(:: (build-row 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0 1 0 0 0 0 0 1 0 1 1 1 1)
+(:: (build-row 0 1 0 0 0 0 0 0 1 0 0 0 0 0 0 1 0 1 0 0 1 1 0 1 0 1 1 0 0 0 0)
+(:: (build-row 0 0 0 0 0 0 0 0 0 0 1 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 1 1 1 0)
+(:: (build-row 0 1 1 0 0 0 0 1 0 0 1 1 1 1 0 0 1 1 1 1 1 0 0 0 0 0 0 0 0 0 0)
+(:: (build-row 1 1 0 0 0 0 0 0 0 1 1 0 0 0 0 0 0 0 0 0 0 0 0 1 0 0 0 0 0 1 0)
+(:: (build-row 0 0 0 1 0 0 0 0 0 1 0 0 0 1 0 0 0 0 1 0 0 0 0 0 0 0 1 0 0 0 0)
+(:: (build-row 0 1 0 0 0 0 1 1 0 0 0 0 0 0 1 0 1 0 0 0 1 0 0 0 0 1 0 0 0 0 0)
+(:: (build-row 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 1 1 0 0 0 0 0 0 0 0 0 0 1 0)
+(:: (build-row 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 0 1 0 1 0 0 0 0 0 0 0 0 0 0 0)
+(:: (build-row 0 0 0 0 0 0 0 0 0 0 0 0 0 1 1 0 1 0 1 1 0 0 0 1 0 1 0 1 0 0 0)
+(:: (build-row 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 1 0 1 0 0 1 1 0 1 0 0 0 0 1 1 0)
+(:: (build-row 1 0 0 0 0 0 1 0 0 0 1 1 0 0 0 0 0 0 0 0 0 0 1 0 1 0 1 0 0 0 1)
+(:: (build-row 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0 1)
+(:: (build-row 0 0 1 1 0 0 1 0 0 0 0 0 1 0 0 0 0 0 0 0 0 1 0 1 1 0 0 1 0 0 1)
+(:: (build-row 1 0 0 1 0 1 0 0 1 1 0 1 0 0 0 0 0 1 1 0 1 0 0 0 0 0 0 0 0 0 0)
+(:: (build-row 1 0 0 1 0 0 0 1 0 1 0 0 1 0 0 0 0 0 0 1 1 0 0 0 0 0 0 0 1 1 0)
+(:: (build-row 0 1 1 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 1 1 0 0 0 0 0 1 0 0)
+(:: (build-row 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 1 0 0 0 0 1 0 0 0 0 0 0 0)
+(:: (build-row 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 1)
+(:: (build-row 0 0 0 0 0 0 0 1 0 0 0 0 0 1 1 0 0 1 0 0 1 1 0 0 1 0 1 0 1 0 0)
+(:: (build-row 1 0 1 0 0 0 0 0 1 0 0 1 0 0 0 0 0 0 0 0 0 0 1 1 0 0 0 1 0 0 0)
+(:: (build-row 1 0 0 1 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0 1)
+(:: (build-row 0 1 1 0 0 0 1 0 0 0 0 1 0 0 0 1 0 0 0 1 0 0 0 0 0 0 0 1 0 0 0)
+(:: (build-row 0 1 0 0 0 0 0 0 0 0 1 1 0 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0)
+(:: (build-row 0 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 1 0)
+(:: (build-row 0 0 0 0 0 1 0 1 1 0 0 1 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 1 0 0)
+(:: (build-row 0 0 1 1 0 0 1 0 0 1 0 0 0 1 1 0 0 1 0 1 0 0 0 0 1 0 0 0 0 0 0)
+(:: (build-row 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 1 0 1 1 0 0 0 0 0 1 0 1 0 0 0 0)
+(:: (build-row 0 1 0 0 0 1 0 1 0 0 0 0 0 0 0 0 0 1 0 0 1 0 1 0 1 0 1 0 0 1 0)
+(:: (build-row 0 1 0 0 1 0 1 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 1 0 1 0 0 1 0 0)
+(:: (build-row 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0 0 0 1 0 0 1 1)
+(:: (build-row 0 0 0 0 0 0 0 0 0 1 1 0 0 0 0 0 1 0 1 0 1 0 0 0 0 0 0 1 1 1 1)
+(:: (build-row 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0 0 0 0 1 1 0 1 0 1 0 0 0 0 0)
+(:: (build-row 0 0 0 0 1 1 0 0 1 0 0 0 0 1 0 0 0 0 0 0 1 0 0 0 0 1 0 0 0 0 0)
+(:: (build-row 0 0 0 0 1 1 0 1 0 0 0 1 0 0 0 0 1 0 1 0 0 1 0 0 0 1 0 0 1 0 0)
+(:: (build-row 0 0 1 1 0 0 0 0 0 0 1 0 1 0 0 1 0 0 0 0 0 0 0 0 1 0 1 0 1 0 0)
+(:: (build-row 0 0 0 0 0 0 0 0 0 1 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 1 0)
+(:: (build-row 1 1 0 0 0 0 0 1 0 0 0 0 0 1 1 0 0 1 1 0 1 0 0 0 0 0 0 0 0 1 0)
+(:: (build-row 1 1 1 0 0 0 0 1 0 0 1 0 0 1 0 0 1 0 0 1 0 1 1 0 0 1 1 0 1 0 0)
+(:: (build-row 0 0 0 0 0 1 1 0 0 1 0 0 0 0 0 0 0 0 0 0 0 1 1 0 0 1 0 1 0 0 0)
+(:: (build-row 0 0 0 0 1 0 0 1 0 0 1 0 0 1 0 0 0 0 1 0 0 0 1 0 1 0 0 0 0 1 0)
+(:: (build-row 1 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 1 0 0 1 0 0 0 0 1 1 1 0 0)
+(:: (build-row 0 0 0 0 1 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0 0 0 0 1 1 0 1 0)
+(:: (build-row 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0 0 0 1 0 0 0 0 0)
+(:: (build-row 0 1 1 0 0 0 1 0 0 0 0 1 0 0 1 0 0 1 0 0 0 0 0 0 0 0 1 0 0 0 0)
+(:: (build-row 0 0 0 1 0 1 0 0 1 0 0 0 1 0 1 0 0 0 0 0 0 1 0 0 0 0 1 0 0 0 0)
+(:: (build-row 0 0 0 1 0 0 0 0 0 0 0 1 1 0 0 0 0 0 0 0 0 0 0 1 0 0 0 1 0 1 0)
+(:: (build-row 0 0 0 1 1 0 0 1 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 1 0 0 0 1 0 0)
+(:: (build-row 0 0 0 0 0 1 0 1 0 1 0 0 0 0 1 0 0 1 1 0 0 0 0 0 0 1 1 0 0 0 1)
+(:: (build-row 0 0 0 0 1 1 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 1 1 0 0 0 0 1 1 0 0)
+(:: (build-row 0 0 1 0 0 0 0 0 0 0 0 0 0 1 0 1 0 1 1 0 0 0 0 0 1 0 0 0 0 0 0)
+(:: (build-row 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0 0 1 0 0 1 0 0 1 1 1 0)
+(:: (build-row 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0 1 0 0 1 0 1 0 0 1 0 1 1 1)
+(:: (build-row 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 0 0 1 0 0 1 1 0 0 1 0 0 0 1)
+(:: (build-row 1 0 0 0 0 0 0 0 0 0 1 0 0 1 0 0 1 0 0 0 0 0 0 0 0 0 0 0 1 0 0)
+nil))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
+
