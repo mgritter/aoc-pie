@@ -1,0 +1,115 @@
+#lang pie
+
+;; Ordinary addition
+(claim + (-> Nat Nat Nat))
+(define +
+  (lambda (n j)
+    (iter-Nat n
+      j
+      (lambda (n) (add1 n)))))
+
+;; Subtraction by 1
+(claim minus1
+  (Pi ((n Nat))
+    (Either
+     (= Nat n zero)
+     (Sigma ((n-1 Nat)) (= Nat n (add1 n-1))))))
+
+(define minus1
+  (lambda (n)
+    (ind-Nat n
+      (lambda (k)
+        (Either
+          (= Nat k 0)
+          (Sigma ((k-1 Nat)) (= Nat k (add1 k-1)))))
+      (left (same 0))
+      (lambda (k-1 decision)
+        (right (cons k-1 (same (add1 k-1))))))))
+
+;; Lemma: we can move an add1 from the second argument of + to the first
+(claim add1+=+add1
+  (Pi ((a Nat) (b Nat))
+    (= Nat
+       (+ (add1 a) b)
+       (+ a (add1 b)))))
+
+(define add1+=+add1
+  (lambda (a b)
+    (ind-Nat a
+      (lambda (n) (= Nat (+ (add1 n) b) (+ n (add1 b))))
+      (same (add1 b))
+      (lambda (n-1 prev)
+        (cong prev (+ 1))))))
+
+;; A congruence class mod N
+;; We prove that 0 <= x < 30 by identifying
+;; such that x + (add1 y) = 30
+;; To ensure modulus is nonzero we work with n-1 instead, which... may be confusing?
+(claim Mod (Pi ((n-1 Nat)) U))
+(define Mod
+  (lambda (n-1)
+    (Sigma ((x Nat)
+            (y Nat))
+      (= Nat (+ x (add1 y)) (add1 n-1)))))
+
+
+
+;; +1 modulo n = increase x, and decrease y, or else reset    
+(claim plus1mod
+  (Pi ((n-1 Nat))
+    (-> (Mod n-1) (Mod n-1))))
+
+;; Have
+;; (= (+ x        (add1 y)    n)
+;; want
+;; (= (+ (add1 x) (add1 y-1)) n)
+(define plus1mod
+  (lambda (n-1 r)
+    (ind-Either (minus1 (car (cdr r))) ;; y
+      (lambda (x) (Mod n-1))
+      ;; y = 0, wrap around
+      (lambda (z) 
+        (cons 0 (cons n-1 (same (add1 n-1)))))
+      ;; y > 0, use the value given to us, and the proof
+      ;; car nz = y-1
+      ;; cdr nz = the evidence that (= y (add1 y-1)))
+      ;;                            (= (add1 y) (add1 (add1 y-1)))
+      ;;     cong to get            (= (+ x (add1 y))
+      ;;                               (+ x (add1 (add1 y-1))))
+      ;;     need proof that        (= (+ x (add1 (add1 y-1)))
+      ;;                               (+ (add1 x) (add1 y-1)))
+      ;;     which is add1+=+add1 above
+      (lambda (nz)
+        (cons (add1 (car r)) ;; (add1 x)
+          (cons (car nz)     ;; y-1
+            (trans               
+              (trans  ;; (= (+ (add1 x) (add1 y-1)) (+ x (add1 y)))
+                (add1+=+add1 (car r) (add1 (car nz)))
+                (symm (cong
+                        (cdr nz)       ;; (= y (add1 y-1)))
+                        (the (-> Nat Nat)
+                          (lambda (z)
+                            (+ (car r) (add1 z)))))))
+              (cdr (cdr r))        ;; (= (+ x (add1 y)) n)
+              )))))))
+            
+(claim add-mod
+  (Pi ((n-1 Nat))
+    (-> (Mod n-1) (Mod n-1) (Mod n-1))))
+
+(define add-mod
+  (lambda (n-1 a b)
+    (iter-Nat (car a)
+      b
+      (lambda (v) (plus1mod n-1 v)))))
+
+(check-same
+  (Mod 11)
+  (cons 8 (cons 3 (same 12)))
+  (add-mod 11
+    (cons 11 (cons 0 (same 12)))
+    (cons 9 (cons 2 (same 12)))))
+
+
+       
+
