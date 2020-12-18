@@ -1,0 +1,260 @@
+#lang pie
+
+(claim Direction U)
+(define Direction (Either Atom Atom))
+(claim f Direction)
+(define f (left 'f))
+(claim b Direction)
+(define b (right 'b))
+(claim l Direction)
+(define l (left 'l))
+(claim r Direction)
+(define r (right 'r))
+
+;;
+;; Addition
+;;
+
+(claim + (-> Nat Nat Nat))
+(define +
+  (lambda (n j)
+    (iter-Nat n
+      j
+      (lambda (sum) (add1 sum)))))
+
+(claim double (-> Nat Nat))
+(define double (lambda (n) (+ n n)))
+
+;;
+;; Seat directions to seat number
+;;
+
+(claim seat-id
+  (-> (Vec Direction 10) Nat))
+
+(define seat-id
+  (lambda (v)
+    (car
+      (ind-Vec 10 v
+        ;; number so far, next place value
+        (lambda (k v) (Pair Nat Nat))
+        (the (Pair Nat Nat)
+          (cons 0 1))
+        (lambda (k-1 e es lower-digits)
+          (cons 
+            (ind-Either e
+              (lambda (x) Nat)
+              ;; Leave bit zero
+              (lambda (l) (car lower-digits))
+              ;; Set bit to one
+              (lambda (r) (+ (cdr lower-digits) (car lower-digits))))
+            ;; next bit is always 2x as much
+            (double (cdr lower-digits))))))))
+
+;; Examples in problem description
+
+(check-same Nat
+  (seat-id (vec:: b (vec:: f (vec:: f (vec:: f (vec:: b (vec:: b (vec:: f (vec:: r (vec:: r (vec:: r vecnil)))))))))))
+  567)
+
+(check-same Nat
+  (seat-id (vec:: f (vec:: f (vec:: f (vec:: b (vec:: b (vec:: b (vec:: f (vec:: r (vec:: r (vec:: r vecnil)))))))))))
+  119)
+
+(check-same Nat
+  (seat-id (vec:: b (vec:: b (vec:: f (vec:: f (vec:: b (vec:: b (vec:: f (vec:: r (vec:: l (vec:: l vecnil)))))))))))
+  820)
+
+;;
+;; Ordering
+;;
+
+;; a is less than b if there exists
+;; c such that a + (c+1) = b
+
+(claim LessThan
+  (Pi ((a Nat) (b Nat))
+    U))
+
+(define LessThan
+  (lambda (a b)
+    (Sigma ((c Nat))
+      (= Nat (add1 (+ a c)) b))))
+
+;; a is gte b if there exists
+;; c such that a = b + c
+
+(claim GreaterThanOrEqual
+  (Pi ((a Nat) (b Nat))
+    U))
+
+(define GreaterThanOrEqual
+  (lambda (a b)
+    (Sigma ((c Nat))
+      (= Nat a (+ b c)))))
+
+;; Every pair of numbers is related in one of those two ways.
+
+(claim compare
+   (Pi ((a Nat) (b Nat))
+    (Either
+     (LessThan a b)
+     (GreaterThanOrEqual a b))))
+
+(claim zero-gte-zero
+   (Either
+     (LessThan 0 0)
+     (GreaterThanOrEqual 0 0)))
+
+(define zero-gte-zero
+    (right (cons 0 (same 0))))
+
+(claim zero-lessthan-b+1
+  (Pi ((b Nat))
+    (Either
+     (LessThan 0 (add1 b))
+     (GreaterThanOrEqual 0 (add1 b)))))
+
+(define zero-lessthan-b+1
+  (lambda (b)
+    (left (cons b (same (add1 b))))))
+
+(claim compare-with-zero
+  (Pi ((b Nat))
+     (Either
+      (LessThan 0 b)
+      (GreaterThanOrEqual 0 b))))
+
+;; compare the number b with zero
+(define compare-with-zero
+  (lambda (b)
+    (ind-Nat b
+      (lambda (n)
+        (Either
+          (LessThan 0 n)
+          (GreaterThanOrEqual 0 n)))
+      zero-gte-zero
+      (lambda (b-1 dontcare)
+        (zero-lessthan-b+1 b-1)))))
+
+(claim mot-compare
+  (-> Nat U))
+
+(define mot-compare
+  (lambda (a)
+    (Pi ((b Nat))
+      (Either
+       (LessThan a b)
+       (GreaterThanOrEqual a b)))))
+
+(claim step-compare
+  (Pi ((a Nat))
+    (-> (mot-compare a) (mot-compare (add1 a)))))
+
+(claim step-compare-mot
+  (-> Nat Nat U))
+
+(define step-compare-mot
+  (lambda (a n)
+    (Either
+      (LessThan a n)
+      (GreaterThanOrEqual a n))))
+
+;; Convert a relation a-1 vs b-1 to one between and b
+(claim advance-lt-by-one
+  (Pi ((a-1 Nat) (b-1 Nat))
+    (-> (LessThan a-1 b-1)
+          (LessThan (add1 a-1) (add1 b-1)) )))
+
+(claim advance-gte-by-one
+  (Pi ((a-1 Nat) (b-1 Nat))
+    (-> (GreaterThanOrEqual a-1 b-1)
+      (GreaterThanOrEqual (add1 a-1) (add1 b-1)) )))
+
+(claim advance-comparison-by-one
+  (Pi ((a-1 Nat) (b-1 Nat))
+    (-> (Either
+          (LessThan a-1 b-1)
+          (GreaterThanOrEqual a-1 b-1))
+        (Either
+          (LessThan (add1 a-1) (add1 b-1))
+          (GreaterThanOrEqual (add1 a-1) (add1 b-1))))))
+
+(define advance-lt-by-one
+  (lambda (a-1 b-1)
+    (lambda (lt)
+      ;; if 1 + ( a-1 + c ) = b-1 then
+      ;;    1 + (a + c) = b
+      (cons (car lt)
+        (cong (cdr lt)
+          (the (-> Nat Nat) (lambda (n) (add1 n))))))))
+
+(define advance-gte-by-one
+  (lambda (a-1 b-1)
+    (lambda (gte)
+      ;; if a-1 = b-1 + c then
+      ;;    a = b + c
+      (cons (car gte)
+        (cong (cdr gte)
+          (the (-> Nat Nat) (lambda (n) (add1 n))))))))
+
+(define advance-comparison-by-one
+  (lambda (a-1 b-1)
+    (lambda (relation)
+      (ind-Either
+        relation
+        (lambda (x)
+          (Either
+            (LessThan (add1 a-1) (add1 b-1))
+            (GreaterThanOrEqual (add1 a-1) (add1 b-1))))
+        (lambda (lt)
+          (left (advance-lt-by-one a-1 b-1 lt)))
+        (lambda (gte)
+          (right (advance-gte-by-one a-1 b-1 gte)))))))
+
+;; comparison is a function that compares a-1 with its argument
+;; convert it to a function that compares a with with its argument b
+(define step-compare
+  (lambda (a-1 comparison)
+    (lambda (b)
+      (ind-Nat
+        b
+        (lambda (n)
+          (Either
+            (LessThan (add1 a-1) n)
+            (GreaterThanOrEqual (add1 a-1) n)))
+        ;; b = 0, so a >= b, witnessed by a = a + 0
+        (right (cons (add1 a-1) (same (add1 a-1))))
+        ;; b > 0 so the answer is the same as a-1 compared with b-1
+        (lambda (b-1 dontcare)
+          (advance-comparison-by-one a-1 b-1
+           (comparison b-1)))))))
+          
+
+;; Inductively create functions that compare a with b
+(define compare
+  (lambda (a b)
+    ((ind-Nat a
+       mot-compare
+       compare-with-zero
+       step-compare)
+      b)))
+
+;; Don't have a proof that either A >= B or B >= A, but
+;; that would make a nice addition.
+(claim max
+  (Pi ((a Nat)
+       (b Nat))
+    Nat))
+
+(define max
+  (lambda (a b)
+    (ind-Either (compare a b)
+      (lambda (x) Nat)
+      (lambda (lt) b)
+      (lambda (gte) a))))
+
+;; Bad news -- this doesn't work in a reasonable amount of memory.
+
+
+

@@ -1,0 +1,151 @@
+#lang pie
+
+(claim CompleteBinaryTree
+  (Pi ((E U)
+       (height Nat))
+    U))
+
+;; Height 0 = node only (to keep things simpler)
+;; Height 1 = two nodes
+;; Height 2 = four nodes, etc.
+(define CompleteBinaryTree
+  (lambda (E height)
+    (iter-Nat height
+      E
+      (lambda (child)
+        (Pair child child)))))
+
+
+(claim ind-Tree
+  (Pi ((E U)
+       (height Nat)
+       (target (CompleteBinaryTree E height))
+       (motive (-> Nat U))
+       (leaf (-> (CompleteBinaryTree E 0) (motive 0)))
+       (interior (Pi ((h Nat)
+                      (left-subtree (CompleteBinaryTree E h))
+                      (right-subtree (CompleteBinaryTree E h))
+                      (left-result (motive h))
+                      (right-result (motive h)))
+                   (motive (add1 h)))))
+    (motive height)))
+
+(define ind-Tree
+  (lambda (E height target motive leaf interior)
+    ;; Constrict a function that preforms induction on a height-h tree,
+    ;; using induction on height h-1 trees
+    ((ind-Nat height
+       (lambda (h) (-> (CompleteBinaryTree E h) (motive h)))
+       (lambda (leaf-node) (leaf leaf-node))
+       (lambda (h-1 subtree-func)
+         (lambda (t)
+           (interior h-1 (car t) (cdr t)
+             (subtree-func (car t))
+             (subtree-func (cdr t))))))
+      target)))
+
+(claim zero-tree
+  (Pi ((height Nat))
+    (CompleteBinaryTree Nat height)))
+
+(define zero-tree
+  (lambda (height)
+    (ind-Nat height
+      (lambda (h) (CompleteBinaryTree Nat h))
+      zero
+      (lambda (h-1 child)
+        (cons child child)))))
+
+(claim one-tree
+  (Pi ((height Nat))
+    (CompleteBinaryTree Nat height)))
+
+(define one-tree
+  (lambda (height)
+    (ind-Nat height
+      (lambda (h) (CompleteBinaryTree Nat h))
+      1
+      (lambda (h-1 child)
+        (cons child child)))))
+
+;; Addition
+(claim + (-> Nat Nat Nat))
+(define +
+  (lambda (n j)
+    (iter-Nat n
+      j
+      (lambda (sum) (add1 sum)))))
+
+(claim sum-tree
+  (Pi ((height Nat)
+       (tree (CompleteBinaryTree Nat height)))
+    Nat))
+
+(define sum-tree
+  (lambda (height tree)
+    (ind-Tree Nat height tree
+      (lambda (h) Nat)
+      (lambda (leaf) leaf)
+      (lambda (h-1 left-tree right-tree left-sum right-sum)
+        (+ left-sum right-sum)))))
+
+(claim Direction U)
+(define Direction (Either Atom Atom))
+(claim f Direction)
+(define f (left 'f))
+(claim b Direction)
+(define b (right 'b))
+(claim l Direction)
+(define l (left 'l))
+(claim r Direction)
+(define r (right 'r))
+
+(claim tree-ref
+  (Pi ((E U)
+       (height Nat)
+       (tree (CompleteBinaryTree E height))
+       (path (Vec Direction height)))
+    E))
+
+(define tree-ref
+  (lambda (E height tree path)
+    ((ind-Tree E height tree
+       ;; motive
+       (lambda (h) (-> (Vec Direction h) E))
+       ;; leaf case
+       (lambda (leaf d) leaf)
+       ;; internal node
+       (lambda (h-1 left-subtree right-subtree left-result right-result)
+         (lambda (d)
+           (ind-Either (head d)
+             (lambda (x) E)
+             (lambda (l) (left-result (tail d)))
+             (lambda (r) (right-result (tail d)))))))
+      path)))
+
+(claim modify-tree
+  (Pi ((E U)
+       (height Nat)
+       (tree (CompleteBinaryTree E height))
+       (path (Vec Direction height))
+       (new-value E))
+    (CompleteBinaryTree E height)))
+
+(define modify-tree
+  (lambda (E height tree path new-value)
+    ((ind-Tree E height tree
+       ;; motive
+       (lambda (h) (-> (Vec Direction h) E (CompleteBinaryTree E h)))
+       ;; leaf case
+       (lambda (leaf d nv) nv)
+       ;; internal node
+       (lambda (h-1 left-subtree right-subtree left-result right-result)
+         (lambda (d nv)
+           (ind-Either (head d)
+             (lambda (x) (CompleteBinaryTree E (add1 h-1)))
+             (lambda (l) (cons (left-result (tail d) nv) right-subtree))
+             (lambda (r) (cons left-subtree (right-result (tail d) nv)))))))
+      path new-value)))
+
+;;
+;;
