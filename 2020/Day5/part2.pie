@@ -1,0 +1,431 @@
+#lang pie
+
+(claim CompleteBinaryTree
+  (Pi ((E U)
+       (height Nat))
+    U))
+
+;; Height 0 = node only (to keep things simpler)
+;; Height 1 = two nodes
+;; Height 2 = four nodes, etc.
+(define CompleteBinaryTree
+  (lambda (E height)
+    (iter-Nat height
+      E
+      (lambda (child)
+        (Pair child child)))))
+
+
+(claim ind-Tree
+  (Pi ((E U)
+       (height Nat)
+       (target (CompleteBinaryTree E height))
+       (motive (-> Nat U))
+       (leaf (-> (CompleteBinaryTree E 0) (motive 0)))
+       (interior (Pi ((h Nat)
+                      (left-subtree (CompleteBinaryTree E h))
+                      (right-subtree (CompleteBinaryTree E h))
+                      (left-result (motive h))
+                      (right-result (motive h)))
+                   (motive (add1 h)))))
+    (motive height)))
+
+(define ind-Tree
+  (lambda (E height target motive leaf interior)
+    ;; Constrict a function that preforms induction on a height-h tree,
+    ;; using induction on height h-1 trees
+    ((ind-Nat height
+       (lambda (h) (-> (CompleteBinaryTree E h) (motive h)))
+       (lambda (leaf-node) (leaf leaf-node))
+       (lambda (h-1 subtree-func)
+         (lambda (t)
+           (interior h-1 (car t) (cdr t)
+             (subtree-func (car t))
+             (subtree-func (cdr t))))))
+      target)))
+
+(claim zero-tree
+  (Pi ((height Nat))
+    (CompleteBinaryTree Nat height)))
+
+(define zero-tree
+  (lambda (height)
+    (ind-Nat height
+      (lambda (h) (CompleteBinaryTree Nat h))
+      zero
+      (lambda (h-1 child)
+        (cons child child)))))
+
+(claim one-tree
+  (Pi ((height Nat))
+    (CompleteBinaryTree Nat height)))
+
+(define one-tree
+  (lambda (height)
+    (ind-Nat height
+      (lambda (h) (CompleteBinaryTree Nat h))
+      1
+      (lambda (h-1 child)
+        (cons child child)))))
+
+;;
+;; Addition
+;;
+
+(claim + (-> Nat Nat Nat))
+(define +
+  (lambda (n j)
+    (iter-Nat n
+      j
+      (lambda (sum) (add1 sum)))))
+
+(claim double (-> Nat Nat))
+(define double (lambda (n) (+ n n)))
+
+(claim sum-tree
+  (Pi ((height Nat)
+       (tree (CompleteBinaryTree Nat height)))
+    Nat))
+
+(define sum-tree
+  (lambda (height tree)
+    (ind-Tree Nat height tree
+      (lambda (h) Nat)
+      (lambda (leaf) leaf)
+      (lambda (h-1 left-tree right-tree left-sum right-sum)
+        (+ left-sum right-sum)))))
+
+;;
+;; Boarding pass letters
+;;
+
+(claim Direction U)
+(define Direction (Either Atom Atom))
+(claim f Direction)
+(define f (left 'f))
+(claim b Direction)
+(define b (right 'b))
+(claim l Direction)
+(define l (left 'l))
+(claim r Direction)
+(define r (right 'r))
+
+;; Tree getters and setters
+
+(claim tree-ref
+  (Pi ((E U)
+       (height Nat)
+       (tree (CompleteBinaryTree E height))
+       (path (Vec Direction height)))
+    E))
+
+(define tree-ref
+  (lambda (E height tree path)
+    ((ind-Tree E height tree
+       ;; motive
+       (lambda (h) (-> (Vec Direction h) E))
+       ;; leaf case
+       (lambda (leaf d) leaf)
+       ;; internal node
+       (lambda (h-1 left-subtree right-subtree left-result right-result)
+         (lambda (d)
+           (ind-Either (head d)
+             (lambda (x) E)
+             (lambda (l) (left-result (tail d)))
+             (lambda (r) (right-result (tail d)))))))
+      path)))
+
+(claim modify-tree
+  (Pi ((E U)
+       (height Nat)
+       (tree (CompleteBinaryTree E height))
+       (path (Vec Direction height))
+       (new-value E))
+    (CompleteBinaryTree E height)))
+
+(define modify-tree
+  (lambda (E height tree path new-value)
+    ((ind-Tree E height tree
+       ;; motive
+       (lambda (h) (-> (Vec Direction h) E (CompleteBinaryTree E h)))
+       ;; leaf case
+       (lambda (leaf d nv) nv)
+       ;; internal node
+       (lambda (h-1 left-subtree right-subtree left-result right-result)
+         (lambda (d nv)
+           (ind-Either (head d)
+             (lambda (x) (CompleteBinaryTree E (add1 h-1)))
+             (lambda (l) (cons (left-result (tail d) nv) right-subtree))
+             (lambda (r) (cons left-subtree (right-result (tail d) nv)))))))
+      path new-value)))
+
+;;
+;; Seat directions to seat number
+;;
+
+(claim seat-id
+  (Pi ((length Nat)
+       (boarding-pass (Vec Direction length)))
+    Nat))
+
+(define seat-id
+  (lambda (len v)
+    (car
+      (ind-Vec len v
+        ;; number so far, next place value
+        (lambda (k v) (Pair Nat Nat))
+        (the (Pair Nat Nat)
+          (cons 0 1))
+        (lambda (k-1 e es lower-digits)
+          (cons 
+            (ind-Either e
+              (lambda (x) Nat)
+              ;; Leave bit zero
+              (lambda (l) (car lower-digits))
+              ;; Set bit to one
+              (lambda (r) (+ (cdr lower-digits) (car lower-digits))))
+            ;; next bit is always 2x as much
+            (double (cdr lower-digits))))))))
+
+;; Examples in problem description
+
+(check-same Nat
+  (seat-id 10 (vec:: b (vec:: f (vec:: f (vec:: f (vec:: b (vec:: b (vec:: f (vec:: r (vec:: r (vec:: r vecnil)))))))))))
+  567)
+
+(check-same Nat
+  (seat-id 10 (vec:: f (vec:: f (vec:: f (vec:: b (vec:: b (vec:: b (vec:: f (vec:: r (vec:: r (vec:: r vecnil)))))))))))
+  119)
+
+(check-same Nat
+  (seat-id 10 (vec:: b (vec:: b (vec:: f (vec:: f (vec:: b (vec:: b (vec:: f (vec:: r (vec:: l (vec:: l vecnil)))))))))))
+  820)
+
+;; 
+;; Path to maximal '1' in tree.
+;;
+
+(claim rightmost-1-in-tree
+  (Pi ((height Nat))
+  (-> (CompleteBinaryTree Nat height)
+      (Either (Vec Direction height)
+        Trivial))))
+
+(claim rightmost-1-mot (Pi ((h Nat)) U))
+(define rightmost-1-mot
+  (lambda (h) (Either (Vec Direction h) Trivial)))
+
+(define rightmost-1-in-tree
+  (lambda (height tree)
+    (ind-Tree Nat height tree
+       ;; motive
+       rightmost-1-mot
+       ;; leaf case
+       (lambda (leaf)
+         (which-Nat leaf
+           (the (rightmost-1-mot 0)
+             (right sole))
+           (lambda (leaf-1)
+             (left vecnil))))
+       ;; internal node
+       (lambda (h-1 left-subtree right-subtree left-result right-result)
+         ;; Prefer right result
+         (ind-Either right-result
+           (lambda (x) (rightmost-1-mot (add1 h-1)))
+           (lambda (v) (left (vec:: r v)))
+           (lambda (triv)
+             (ind-Either left-result
+               (lambda (x) (rightmost-1-mot (add1 h-1)))
+               (lambda (v) (left (vec:: l v)))
+               (lambda (triv) (right sole)))))))))
+
+(claim maximal-seat-id-in-tree
+  (Pi ((height Nat)
+       (tree (CompleteBinaryTree Nat height))) Nat))
+
+(define maximal-seat-id-in-tree
+  (lambda (height tree)
+    (ind-Either (rightmost-1-in-tree height tree)
+      (lambda (x) Nat)
+      (lambda (l) (seat-id height l))
+      (lambda (r) 0))))
+
+;; 
+;; Load day1 into tree, find the path to maximal '1' in tree.
+;;
+
+(claim boarding-pass
+  (-> Direction Direction Direction Direction Direction Direction Direction Direction Direction Direction
+      (Vec Direction 10)))
+
+(define boarding-pass
+  (lambda (d1 d2 d3 d4 d5 d6 d7 d8 d9 d10)
+    (vec:: d1 (vec:: d2 (vec:: d3 (vec:: d4 (vec:: d5 (vec:: d6 (vec:: d7 (vec:: d8 (vec:: d9 (vec:: d10 vecnil))))))))))))
+
+(claim maximal-seat-in-passes
+  (Pi ((length Nat))
+    (-> (List (Vec Direction length)) Nat)))
+
+(define maximal-seat-in-passes
+  (lambda (length boarding-passes)
+    (maximal-seat-id-in-tree length
+      (rec-List boarding-passes
+        (zero-tree length)
+        (lambda (bp bps prev-tree)
+          (modify-tree Nat length prev-tree bp 1))))))
+
+;; Part 2
+;; looking for 1 - 0 - 1 in consecutive leaves.
+;; (unfortunately two such leaves may be quite distant)
+
+(claim leftmost-1-in-tree
+  (Pi ((height Nat))
+  (-> (CompleteBinaryTree Nat height)
+      (Either (Vec Direction height)
+        Trivial))))
+
+(claim leftmost-1-mot (Pi ((h Nat)) U))
+(define leftmost-1-mot
+  (lambda (h) (Either (Vec Direction h) Trivial)))
+
+(define leftmost-1-in-tree
+  (lambda (height tree)
+    (ind-Tree Nat height tree
+       ;; motive
+       leftmost-1-mot
+       ;; leaf case
+       (lambda (leaf)
+         (which-Nat leaf
+           (the (leftmost-1-mot 0)
+             (right sole))
+           (lambda (leaf-1)
+             (left vecnil))))
+       ;; internal node
+       (lambda (h-1 left-subtree right-subtree left-result right-result)
+         ;; Prefer left result
+         (ind-Either left-result
+           (lambda (x) (leftmost-1-mot (add1 h-1)))
+           (lambda (v) (left (vec:: l v)))
+           (lambda (triv)
+             (ind-Either right-result
+               (lambda (x) (leftmost-1-mot (add1 h-1)))
+               (lambda (v) (left (vec:: r v)))
+               (lambda (triv) (right sole)))))))))
+
+(claim find-first-0
+  (Pi ((height Nat))
+  (-> (CompleteBinaryTree Nat height)    
+    (Either (Vec Direction height)
+      Trivial))))
+
+(claim leftmost-0-mot
+  (Pi ((h Nat)) U))
+
+(define leftmost-0-mot
+  (lambda (h)
+    (Either (Vec Direction h) Trivial)))
+
+;; FIXME: refactor these into something with a base handler?  Or factor out the step function?
+(define find-first-0
+  (lambda (height tree)
+    (ind-Tree Nat height tree
+       ;; motive
+       leftmost-0-mot
+       ;; leaf case, look for 0
+       (lambda (leaf)
+         (which-Nat leaf
+           (the (leftmost-0-mot 0)
+             (left vecnil))
+           (lambda (leaf-1)
+             (right sole))))
+       ;; internal node
+       (lambda (h-1 left-subtree right-subtree left-result right-result)
+         ;; Prefer left result
+         (ind-Either left-result
+           (lambda (x) (leftmost-0-mot (add1 h-1)))
+           (lambda (v) (left (vec:: r v)))
+           (lambda (triv)
+             (ind-Either right-result
+               (lambda (x) (leftmost-0-mot (add1 h-1)))
+               (lambda (v) (left (vec:: l v)))
+               (lambda (triv) (right sole)))))))))
+
+(claim find-first-bounded-0
+  (Pi ((height Nat))
+  (-> (CompleteBinaryTree Nat height)
+      (Vec Direction height)    
+    (Either (Vec Direction height)
+      Trivial))))
+
+;; This time we're building a function that
+;; evaluates whether the 0 should be reported or not, based
+;; on the bound.
+(claim bounded-0-mot
+  (Pi ((h Nat)) U))
+
+(define bounded-0-mot 
+  (lambda (h)
+    (-> (Vec Direction h) (Either (Vec Direction h) Trivial))))
+
+(define find-first-bounded-0
+  (lambda (height tree left-bound)
+    ((ind-Tree Nat height tree
+       bounded-0-mot
+       (lambda (leaf lb)
+         ;; Bounds are zero-length so we can ignore them; did we find a zero?
+         (which-Nat leaf
+             (the (leftmost-0-mot 0)
+               (left vecnil))
+             (lambda (leaf-1)
+               (right sole))))
+       (lambda (h-1 left-subtree right-subtree left-result right-result)
+         (lambda (lb)
+           (ind-Either (head lb)
+             (lambda (x) (leftmost-0-mot (add1 h-1)))
+             ;; If bound goes left, then check left with a bound and right without a bound (and prefer left)
+             (lambda (lb-goes-left)
+               (ind-Either (left-result (tail lb))
+                 (lambda (x) (leftmost-0-mot (add1 h-1)))
+                 (lambda (present)
+                   (left (vec:: l present)))
+                 (lambda (not-present)
+                   (ind-Either (find-first-0 h-1 right-subtree)
+                     (lambda (x) (leftmost-0-mot (add1 h-1)))
+                     (lambda (present)
+                       (left (vec:: l present)))
+                     (lambda (not-present)
+                       (right sole))))))
+             ;; If bound goes right, ignore the left side and check the right with a bound.
+             (lambda (lb-goes-right)
+               (ind-Either (right-result (tail lb))
+                 (lambda (x) (leftmost-0-mot (add1 h-1)))
+                 (lambda (present)
+                   (left (vec:: r present)))
+                 (lambda (not-present)
+                   (right sole))))))))
+      left-bound)))
+
+(claim part2
+  (Pi ((length Nat))
+    (-> (List (Vec Direction length)) Nat)))
+
+(define part2
+  (lambda (length boarding-passes)
+    ((the
+       (-> (CompleteBinaryTree Nat length) Nat)
+       (lambda (tree)
+         (ind-Either (leftmost-1-in-tree length tree)
+           (lambda (x) Nat)
+           (lambda (left-bound)
+             (ind-Either
+               (find-first-bounded-0 length tree left-bound)
+               (lambda (x) Nat)
+               (lambda (present) (seat-id length present))
+               (lambda (not-present) 0)))
+           (lambda (not-found)
+             1024))))
+      (rec-List boarding-passes
+        (zero-tree length)
+        (lambda (bp bps prev-tree)
+          (modify-tree Nat length prev-tree bp 1))))))
+    
