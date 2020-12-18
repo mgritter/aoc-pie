@@ -243,10 +243,58 @@
       (the (HeapGTE E (absent E) (absent E))
         (right (same (absent E)))))))
 
+(claim Has-Empty-Node
+  (Pi ((E U)
+       (tree (Tree E))) 
+    U))
+
+(define Has-Empty-Node
+  (lambda (E tree)
+    (Sigma ((path TreePath))
+      (= (TreeNode E) (tree path) (right sole)))))
+
+;; Heap are also *full* binary trees.
+(claim 
+
+;;Heaps are also *full* binary trees.
 (claim Heap (Pi ((E U)) U))
 (define Heap
   (lambda (E)
     (Sigma ((t (Tree E)))
-      (Pi ((p TreePath))
-          (Has-Minheap-Property E t p)))))
+      (Pair
+       (Has-Empty-Node E t)
+       (Pi ((p TreePath))
+         (Has-Minheap-Property E t p))))))
+
+(claim empty-path TreePath)
+(define empty-path
+  (cons 0 vecnil))
+
+(claim empty-heap
+  (Pi ((E U))
+    (Heap E)))
+
+(define empty-heap
+  (lambda (E)
+    (cons (empty-tree E)
+      (cons
+        ;; has empty node
+        (cons
+          empty-path 
+          (same (right sole)))
+        ;; has heap property
+        (empty-tree-is-minheap E)))))
+
+(claim left-heap
+  (Pi ((E U))
+    (-> (Heap E) (Heap E))))
+
+(claim right-heap
+  (Pi ((E U))
+    (-> (Heap E) (Heap E))))
+
+(define left-heap
+  (lambda (E heap)
+    ))
+
 
