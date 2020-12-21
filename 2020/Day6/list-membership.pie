@@ -1,0 +1,441 @@
+#lang pie
+
+(claim Color U)
+(define Color Nat)
+
+(claim Contents U)
+(define Contents (List (Pair Nat Color)))
+
+(claim BagIndex U)
+(define BagIndex (-> Color Contents))
+
+(claim + (-> Nat Nat Nat))
+(define +
+  (lambda (a b)
+    (iter-Nat a
+      b
+      (lambda (x) (add1 x)))))
+
+(claim product (-> Nat Nat Nat))
+(define product
+  (lambda (a b)
+    (iter-Nat a
+      0
+      (+ b))))
+
+(claim make-list
+  (Pi ((E U)
+       (a (List E))
+       (b E)
+       (c (List E)))
+    (List E)))
+
+(define make-list
+  (lambda (E prefix single suffix)
+    (rec-List prefix
+      (:: single suffix)
+      (lambda (e es x) (:: e x)))))
+                    
+(claim InList
+  (Pi ((E U)
+       (l (List E))
+       (e E))
+    U))
+
+(define InList
+  (lambda (E list e)
+    (Sigma ((prefix (List E))
+            (suffix (List E)))
+      (= (List E) list (make-list E prefix e suffix)))))
+
+(claim extend-in-list
+  (Pi ((E U)
+       (l (List E))
+       (e E)
+       (next-head E))
+    (-> (InList E l e) (InList E (:: next-head l) e))))
+
+(define extend-in-list
+  (lambda (E l e next-head prev-proof)
+    (cons (:: next-head (car prev-proof)) ;; suffix' = head + suffix
+      (cons (car (cdr prev-proof))        ;; prefix' = prefix
+        (cong
+          (cdr (cdr prev-proof))
+          (the
+            (-> (List E) (List E))
+            (lambda (x) (:: next-head x))))))))
+    
+(claim if-in-list-then
+  (Pi ((E U)
+       (l-head E)
+       (l-tail (List E))
+       (e E)
+       (hyp (InList E (:: l-head l-tail) e)))
+    (Either
+     (= E l-head e)
+     (InList E l-tail e))))
+
+(claim head-nonempty
+  (Pi ((E U)
+       (some-value E)
+       (l (List E)))
+    E))
+
+(define head-nonempty
+  (lambda (E some-value l)
+    (rec-List l
+      some-value ;; Shouldn't happen
+      (lambda (e es x) e))))
+
+(claim tail-nonempty
+  (Pi ((E U)
+       (l (List E)))
+    (List E)))
+
+(define tail-nonempty
+  (lambda (E l)
+    (rec-List l
+      (the (List E) nil) ;; Shouldn't happen
+      (lambda (e es x) es))))
+
+(claim list-empty?
+  (Pi ((E U)
+       (l (List E)))
+    (Either
+     (= (List E) l nil)
+     (Sigma ((prefix-head E)
+             (prefix-tail (List E)))
+       (= (List E) l (:: prefix-head prefix-tail))))))
+
+(define list-empty?
+  (lambda (E l)
+    (ind-List l
+      (lambda (m)
+        (Either
+          (= (List E) m nil)
+          (Sigma ((prefix-head E)
+                  (prefix-tail (List E)))
+            (= (List E) m (:: prefix-head prefix-tail)))))
+      (left (same nil))
+      (lambda (e es x)
+        (right
+          (cons e (cons es (same (:: e es)))))))))
+
+(claim if-prefix-empty-then-simplify-make-list
+  (Pi ((E U)
+       (result (List E))
+       (prefix (List E))
+       (e E)
+       (suffix (List E))
+       (hyp (= (List E) result (make-list E prefix e suffix)))
+       (prefix=nil (= (List E) prefix nil)))
+    (= (List E) result (:: e suffix))))
+
+(define if-prefix-empty-then-simplify-make-list
+  (lambda (E result prefix e suffix hyp prefix=nil)
+    (trans
+      hyp
+      (cong prefix=nil
+        (the (-> (List E) (List E))
+          (lambda (px)
+            (make-list E px e suffix)))))))
+
+(claim if-prefix-nonempty-then-shorten-make-list
+  (Pi ((E U)
+       (result-head E)
+       (result-tail (List E))
+       (prefix (List E))
+       (e E)
+       (suffix (List E))
+       (hyp (= (List E) (:: result-head result-tail) (make-list E prefix e suffix)))
+       (prefix-not-nil (Sigma ((prefix-head E)
+                               (prefix-tail (List E)))
+                         (= (List E) prefix (:: prefix-head prefix-tail)))))
+    (= (List E) result-tail (make-list E (car (cdr prefix-not-nil)) e suffix))))
+
+(define if-prefix-nonempty-then-shorten-make-list
+  (lambda (E result-head result-tail prefix e suffix hyp prefix-not-nil)
+    (cong
+      (trans
+        hyp
+        (cong
+          (cdr (cdr prefix-not-nil))
+          (the (-> (List E) (List E))
+            (lambda (px)
+              (make-list E px e suffix)))))
+      (tail-nonempty E))))
+
+(define if-in-list-then
+  (lambda (E l-head l-tail e hyp)
+    ;; hyp is prefix . suffix . (= (List E) (:: l-head l-tail) (make-list E prefix e suffix)))))
+    (ind-Either (list-empty? E (car hyp)) ;; prefix!      
+      ;; motive
+      (lambda (x)
+        (Either
+          (= E l-head e)
+          (InList E l-tail e)))
+      ;; prefix is nil, here's the equality
+      (lambda (prefix=nil)
+        (left
+          (cong (if-prefix-empty-then-simplify-make-list E (:: l-head l-tail)
+                  (car hyp) e (car (cdr hyp)) (cdr (cdr hyp)) prefix=nil)
+            (head-nonempty E e))))
+      ;; prefix is not nil, 
+      (lambda (prefix-not-nil)
+        (right
+          (cons (car (cdr prefix-not-nil)) ;; prefix' = tail prefix
+            (cons (car (cdr hyp))    ;; suffix' = suffix
+              (if-prefix-nonempty-then-shorten-make-list E l-head l-tail
+                (car hyp) e (car (cdr hyp)) (cdr (cdr hyp)) prefix-not-nil))))))))
+  
+(claim Boolean U)
+(define Boolean (Either Trivial Trivial))
+
+(claim predicate (Pi ((E U)) U))
+(define predicate
+  (lambda (E) (-> E Boolean)))
+
+(claim true Boolean)
+(define true (left sole))
+
+(claim false Boolean)
+(define false (right sole))
+
+;; Example predicates
+
+(claim is-zero (predicate Nat))
+(define is-zero
+  (lambda (n)
+    (which-Nat n
+      true
+      (lambda (n-1) false))))
+
+;;
+;; Predicates are decidable!
+;;
+(claim bool->nat (-> Boolean Nat))
+(define bool->nat
+  (lambda (b)
+    (ind-Either b
+      (lambda (x) Nat)
+      (lambda (l) 1)
+      (lambda (r) 0))))
+
+(claim bool-consequence (-> Boolean Boolean U))
+(define bool-consequence
+  (lambda (x y)
+    (which-Nat (bool->nat x)
+      ;; x is false
+      (which-Nat (bool->nat y)
+        ;; y is false
+        Trivial
+        ;; y is true
+        (lambda (y-true)
+          Absurd))
+      ;; x is true
+      (lambda (x-true)
+        (which-Nat (bool->nat y)
+          ;; y is false
+          Absurd
+          ;; y is true
+          (lambda (y-true) Trivial))))))   
+
+(claim contradiction
+  (Pi ((x Boolean))
+    (-> (= Boolean x true) (= Boolean x false) Absurd)))
+
+(define contradiction
+  (lambda (x equal-true equal-false)
+    (replace
+      (trans (symm equal-true) equal-false)
+      (bool-consequence true)
+      ;; true = true is a Trivial, so the argument must be sole
+      ;; replace gives an Absurd
+      sole)))
+    
+;; Decidable propositions
+(claim Dec (Pi ((Prop U)) U))
+(define Dec
+  (lambda (Prop)
+    (Either Prop (-> Prop Absurd))))
+
+(claim decide-predicate
+  (Pi ((E U)
+       (f (predicate E))
+       (e E))
+    (Dec (= Boolean (f e) true))))
+
+(claim predicate=
+  (Pi ((E U)
+       (f (predicate E))
+       (e E))
+    (Either (= Boolean (f e) true)
+            (= Boolean (f e) false))))
+
+(define predicate=
+  (lambda (E f e)
+    (ind-Either (f e)
+      (lambda (x)
+        (Either (= Boolean x true)
+          (= Boolean x false)))
+      (lambda (tv) (left (same (left tv))))
+      (lambda (fv) (right (same (right fv)))))))
+   
+(define decide-predicate
+  (lambda (E f e)
+    (ind-Either (predicate= E f e)
+      (lambda (x) (Dec (= Boolean (f e) true)))
+      (lambda (tv) (left tv))
+      (lambda (pred=false) (right
+                           (lambda (pred=true)
+                            (contradiction (f e) pred=true pred=false)))))))
+
+;; An empty and nonempty list cannot be equal
+
+(claim length
+  (Pi ((E U)
+       (l (List E)))
+    Nat))
+
+(define length
+  (lambda (E l)
+    (ind-List l
+      (lambda (x) Nat)
+      0
+      (lambda (e es es-len)
+        (add1 es-len)))))
+      
+(claim nonempty-consequences
+  (Pi ((E U)
+       (l (List E)))
+    U))
+
+(define nonempty-consequences
+  (lambda (E l)
+    (which-Nat (length E l)
+      Absurd
+      (lambda (l-1) Trivial))))
+
+(claim make-list-creates-nonempty-lists
+  (Pi ((E U)
+       (prefix (List E))
+       (single E)
+       (suffix (List E)))
+    (nonempty-consequences E (make-list E prefix single suffix))))
+
+;; If prefix is empty, then the list is (:: single suffix) which
+;; the type system can handle, otherwise it has a first element and
+;; the type system can handle that too!  So it's not much of a proof.
+(define make-list-creates-nonempty-lists
+  (lambda (E prefix single suffix)
+    (ind-List prefix
+      (lambda (l) (nonempty-consequences E (make-list E l single suffix)))
+      sole
+      (lambda (e es prev)
+        sole))))
+   
+;; The empty list cannot have any members
+(claim empty-list-has-no-member
+  (Pi ((E U)
+       (e E))
+    (-> (InList E nil e) Absurd)))
+
+(define empty-list-has-no-member
+  (lambda (E e)
+    (lambda (location) ;; (cons prefix (const suffix (= List nil <stuff>))
+      (replace (symm (cdr (cdr location)))
+        (nonempty-consequences E)
+        (make-list-creates-nonempty-lists E (car location) e (car (cdr location)))))))
+
+(claim find-in-list
+  (Pi ((E U)
+       (f (predicate E))
+       (l (List E)))
+    (Dec
+     (Sigma ((e E))
+       (Pair (= Boolean (f e) true)
+             (InList E l e))))))
+
+(claim extend-proof-with-new-head
+  (Pi ((E U)
+       (f (predicate E))
+       (first E)
+       (rest (List E))
+       (not-match (-> (= Boolean (f first) true) Absurd))
+       (previous
+         (Dec (Sigma ((e E))
+                (Pair (= Boolean (f e) true)
+                      (InList E rest e))))))
+    (Dec (Sigma ((e E))
+           (Pair (= Boolean (f e) true)
+                 (InList E (:: first rest) e))))))
+
+(define extend-proof-with-new-head
+  (lambda (E f first rest not-match previous)
+    (ind-Either previous
+      (lambda (x) (Dec (Sigma ((e E))
+                         (Pair (= Boolean (f e) true)
+                               (InList E (:: first rest) e)))))
+      ;; If we previously found an e, then that e still works!
+      (lambda (found)
+        (left (cons (car found)  ;; same e
+                (cons (car (cdr found)) ;; still evaluates to true
+                  (extend-in-list E rest (car found) first (cdr (cdr found)))))))
+      ;; If we haven't found an e, then "first" does not work either
+      (lambda (not-found)
+        (right (lambda (false-hypothesis)
+                 ;; How to work around building an e = first check?
+                 ;; The hypothesis leads to absurdity either becuase
+                 ;; (f e) is false, or because e is not in the list.
+                 (ind-Either (decide-predicate E f (car false-hypothesis))
+                   (lambda (x) Absurd)
+                   ;; (f e) is true, so it must be that e is not in the list
+                   (lambda (predicate-holds)
+                     ;; Is e the first element of the list?
+                     (ind-Either (if-in-list-then E first rest
+                                   (car false-hypothesis) ;; candidate e
+                                   (cdr (cdr false-hypothesis))) ;; hypothesized InList
+                       (lambda (x) Absurd)
+                       ;; first equals (car false-hypothesis)
+                       ;; but we already showed that (predicate first) is false in "not-match"
+                       (lambda (e-is-first-element)
+                         (not-match
+                           (trans
+                             (cong e-is-first-element f) ;; (= (f first) (f (car false-hypothesis)))
+                             predicate-holds)))
+                       ;; (car false-hypothesis is not the first element, so we have a shorter list)
+                       (lambda (e-is-not-first-element)
+                         (not-found (cons (car false-hypothesis)
+                                      (cons predicate-holds
+                                        e-is-not-first-element))))
+                         ))
+                   ;; (f e) is false, so we can use the that part of the false hypothesis
+                   ;; to show contradiction
+                   (lambda (predicate-does-not-hold)
+                     (predicate-does-not-hold (car (cdr false-hypothesis))))))))))) 
+
+(define find-in-list
+  (lambda (E f l)
+    (ind-List l
+      (lambda (x) (Dec (Sigma ((e E))
+                         (Pair (= Boolean (f e) true)
+                               (InList E x e)))))
+      ;; Reached the end of the list, cannot be a match here
+      ;; because the list is empty!
+      (right
+        (lambda (prop)  ;; e, equality, InList
+          ((empty-list-has-no-member E (car prop)) (cdr (cdr prop)))))
+      (lambda (g gs decidable)
+        (ind-Either (decide-predicate E f g) ;; is the first element of the list OK?
+          (lambda (x) (Dec (Sigma ((e E))
+                         (Pair (= Boolean (f e) true)
+                               (InList E (:: g gs) e)))))
+          (lambda (yes)
+            (left (cons g
+                    (cons yes
+                      (cons nil (cons gs (same (:: g gs))))))))
+          (lambda (no)
+            (extend-proof-with-new-head E f g gs no decidable)))))))
+
+       
+        
